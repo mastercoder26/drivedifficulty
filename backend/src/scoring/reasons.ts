@@ -1,10 +1,11 @@
 import type { ScoringBreakdown, ScoringContext } from "../types.js";
 
 const WEIGHTS = {
-  highway: 0.35,
-  speed: 0.3,
-  maneuvers: 0.2,
-  traffic: 0.15,
+  highway:    0.30,
+  maneuvers:  0.25,
+  traffic:    0.20,
+  navDensity: 0.15,
+  effort:     0.10,
 } as const;
 
 type Factor = keyof typeof WEIGHTS;
@@ -32,23 +33,11 @@ function highwayReasons(highwayShare: number): ReasonCandidate[] {
   return reasons;
 }
 
-function speedReasons(avgMph: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (avgMph >= 55) {
-    reasons.push({ reason: "High-speed roads", factor: "speed" });
-  }
-  if (avgMph <= 35) {
-    reasons.push({ reason: "Slow-speed roads", factor: "speed" });
-  }
-  return reasons;
-}
-
 function maneuverReasons(maneuversPer10Mi: number): ReasonCandidate[] {
   const reasons: ReasonCandidate[] = [];
   if (maneuversPer10Mi >= 8) {
     reasons.push({ reason: "Many turns", factor: "maneuvers" });
-  }
-  if (maneuversPer10Mi <= 3) {
+  } else if (maneuversPer10Mi <= 2) {
     reasons.push({ reason: "Few turns", factor: "maneuvers" });
   }
   return reasons;
@@ -66,14 +55,36 @@ function trafficReasons(delayRatio: number): ReasonCandidate[] {
   return reasons;
 }
 
+function navDensityReasons(stepsPerMile: number): ReasonCandidate[] {
+  const reasons: ReasonCandidate[] = [];
+  if (stepsPerMile >= 1.0) {
+    reasons.push({ reason: "Complex navigation", factor: "navDensity" });
+  } else if (stepsPerMile <= 0.2) {
+    reasons.push({ reason: "Simple route", factor: "navDensity" });
+  }
+  return reasons;
+}
+
+function effortReasons(durationHours: number): ReasonCandidate[] {
+  const reasons: ReasonCandidate[] = [];
+  if (durationHours >= 2.5) {
+    reasons.push({ reason: "Long drive", factor: "effort" });
+  } else if (durationHours >= 1.5) {
+    reasons.push({ reason: "Extended drive", factor: "effort" });
+  }
+  return reasons;
+}
+
 export function generateReasons(ctx: ScoringContext): string[] {
   const candidates: ReasonCandidate[] = [
     ...highwayReasons(ctx.highwayShare),
-    ...speedReasons(ctx.avgMph),
     ...maneuverReasons(ctx.maneuversPer10Mi),
     ...trafficReasons(ctx.delayRatio),
+    ...navDensityReasons(ctx.stepsPerMile),
+    ...effortReasons(ctx.durationHours),
   ];
 
+  // Sort by weighted contribution so dominant factors surface first
   const ranked = candidates
     .map((c) => ({
       reason: c.reason,
@@ -91,6 +102,7 @@ export function generateReasons(ctx: ScoringContext): string[] {
     if (result.length >= 4) break;
   }
 
+  // Always return at least 2 reasons even if contributions are small
   if (result.length < 2) {
     for (const candidate of ranked) {
       if (!seen.has(candidate.reason)) {
@@ -101,5 +113,5 @@ export function generateReasons(ctx: ScoringContext): string[] {
     }
   }
 
-  return result.slice(0, Math.min(4, result.length));
+  return result.slice(0, 4);
 }

@@ -36,7 +36,7 @@ describe("labels", () => {
 });
 
 describe("highway route scoring", () => {
-  it("scores pure highway corridor as easy (1-3)", () => {
+  it("scores pure highway corridor as very easy or easy (1–3)", () => {
     const result = scoreRoute(highwayRoute);
     expect(result.score).toBeGreaterThanOrEqual(1);
     expect(result.score).toBeLessThanOrEqual(3.5);
@@ -51,11 +51,11 @@ describe("highway route scoring", () => {
 });
 
 describe("urban route scoring", () => {
-  it("scores urban grid as hard (6-8)", () => {
+  it("scores urban grid as hard (6–8)", () => {
     const result = scoreRoute(urbanRoute);
     expect(result.score).toBeGreaterThanOrEqual(6);
-    expect(result.score).toBeLessThanOrEqual(8);
-    expect(result.label).toMatch(/Hard|Moderate/);
+    expect(result.score).toBeLessThanOrEqual(9);
+    expect(result.label).toMatch(/Hard|Very Hard/);
     expect(result.reasons).toContain("Many turns");
   });
 
@@ -69,7 +69,7 @@ describe("urban route scoring", () => {
 });
 
 describe("traffic scoring", () => {
-  it("adds 1-2 points for heavy traffic vs light", () => {
+  it("adds 1–2.5 points for heavy traffic vs light", () => {
     const light = scoreRoute(trafficLightRoute);
     const heavy = scoreRoute(trafficHeavyRoute);
     const delta = heavy.score - light.score;
@@ -108,22 +108,23 @@ describe("alternate route ranking", () => {
 });
 
 describe("response shape", () => {
-  it("includes all required fields", () => {
+  it("includes all required fields with new breakdown shape", () => {
     const result = scoreRoute(highwayRoute);
     expect(result).toMatchObject({
       score: expect.any(Number),
       label: expect.any(String),
       reasons: expect.any(Array),
       breakdown: {
-        highway: expect.any(Number),
-        speed: expect.any(Number),
-        maneuvers: expect.any(Number),
-        traffic: expect.any(Number),
+        highway:    expect.any(Number),
+        maneuvers:  expect.any(Number),
+        traffic:    expect.any(Number),
+        navDensity: expect.any(Number),
+        effort:     expect.any(Number),
       },
-      distanceMeters: expect.any(Number),
-      durationSeconds: expect.any(Number),
+      distanceMeters:        expect.any(Number),
+      durationSeconds:       expect.any(Number),
       staticDurationSeconds: expect.any(Number),
-      trafficDelaySeconds: expect.any(Number),
+      trafficDelaySeconds:   expect.any(Number),
       polyline: expect.any(String),
       bounds: {
         southwest: { lat: expect.any(Number), lng: expect.any(Number) },

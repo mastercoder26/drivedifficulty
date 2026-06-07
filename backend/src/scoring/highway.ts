@@ -1,10 +1,15 @@
 import type { RouteStep } from "../types.js";
 
+// Matches interstate, US routes, and all 50 state abbreviation highway codes
 const HIGHWAY_INSTRUCTION_RE =
-  /\b(I-\d+|US\s*\d+|SR-\d+|Hwy|Freeway|Expressway|Motorway|Turnpike)\b/i;
+  /\b(I-\d+|Interstate\s*\d+|US\s*-?\s*\d+|US\s*Hwy\s*\d+|(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)-\d+|State\s*(?:Hwy|Route|Rd)\s*\d+|Hwy|Highway|Freeway|Expressway|Motorway|Turnpike|Tollway|Beltway|Bypass)\b/i;
 
 const RAMP_MANEUVERS = new Set(["RAMP_LEFT", "RAMP_RIGHT", "MERGE"]);
 const STRAIGHT_MANEUVERS = new Set(["STRAIGHT", "NAME_CHANGE"]);
+
+// Proportion of highway share that counts as baseline "high-speed alertness" difficulty.
+// Even on a straight highway, 70 mph driving demands sustained attention.
+const HIGHWAY_SPEED_BASELINE = 0.3;
 
 export interface HighwayResult {
   highwayShare: number;
@@ -54,7 +59,10 @@ export function computeHighwayShare(
   });
 
   const highwayShare = totalMeters > 0 ? highwayMeters / totalMeters : 0;
-  const subscore = 1 - highwayShare;
+
+  // U-shape: pure local roads = max difficulty (1.0), pure highway = baseline
+  // difficulty for high-speed sustained driving (0.3), mixed = higher of the two.
+  const subscore = Math.max(1 - highwayShare, highwayShare * HIGHWAY_SPEED_BASELINE);
 
   return { highwayShare, subscore };
 }

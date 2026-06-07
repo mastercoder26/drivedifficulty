@@ -34,9 +34,10 @@ export interface SpeedLimitPoint {
 
 export interface ScoringBreakdown {
   highway: number;
-  speed: number;
   maneuvers: number;
   traffic: number;
+  navDensity: number;
+  effort: number;
 }
 
 export interface ScoredRoute {
@@ -70,9 +71,9 @@ export interface DifficultyRequest {
 
 export interface ScoringContext {
   highwayShare: number;
-  avgMph: number;
-  maxMph: number;
   maneuversPer10Mi: number;
   delayRatio: number;
+  stepsPerMile: number;
+  durationHours: number;
   breakdown: ScoringBreakdown;
 }

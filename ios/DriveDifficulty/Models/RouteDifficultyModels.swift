@@ -43,16 +43,18 @@ struct ScoredRoute: Decodable, Identifiable, Hashable {
 
 struct DifficultyBreakdown: Decodable {
     let highway: Double
-    let speed: Double
     let maneuvers: Double
     let traffic: Double
+    let navDensity: Double
+    let effort: Double
 
     var items: [(key: String, title: String, value: Double)] {
         [
-            ("highway", "Highway", highway),
-            ("speed", "Speed", speed),
-            ("maneuvers", "Maneuvers", maneuvers),
-            ("traffic", "Traffic", traffic)
+            ("highway",    "Road Type",   highway),
+            ("maneuvers",  "Turns",       maneuvers),
+            ("traffic",    "Traffic",     traffic),
+            ("navDensity", "Navigation",  navDensity),
+            ("effort",     "Drive Length", effort)
         ]
     }
 }

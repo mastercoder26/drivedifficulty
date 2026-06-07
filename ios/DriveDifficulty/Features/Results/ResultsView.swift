@@ -221,7 +221,7 @@ struct BreakdownBarRow: View {
                     score: 4.2,
                     label: .easy,
                     reasons: ["Mostly highway", "Light traffic"],
-                    breakdown: DifficultyBreakdown(highway: 0.18, speed: 0.42, maneuvers: 0.31, traffic: 0.12),
+                    breakdown: DifficultyBreakdown(highway: 0.30, maneuvers: 0.35, traffic: 0.15, navDensity: 0.20, effort: 0.45),
                     distanceMeters: 312000,
                     durationSeconds: 10800,
                     staticDurationSeconds: 9900,
