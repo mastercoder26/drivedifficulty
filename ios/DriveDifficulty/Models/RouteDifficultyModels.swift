@@ -72,6 +72,11 @@ struct RouteBounds: Decodable {
 struct Coordinate: Decodable {
     let latitude: Double
     let longitude: Double
+
+    enum CodingKeys: String, CodingKey {
+        case latitude = "lat"
+        case longitude = "lng"
+    }
 }
 
 enum DifficultyLabel: String, Decodable, CaseIterable {
