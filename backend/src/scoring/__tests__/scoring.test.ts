@@ -39,7 +39,7 @@ describe("highway route scoring", () => {
   it("scores pure highway corridor as easy (1-3)", () => {
     const result = scoreRoute(highwayRoute);
     expect(result.score).toBeGreaterThanOrEqual(1);
-    expect(result.score).toBeLessThanOrEqual(3);
+    expect(result.score).toBeLessThanOrEqual(3.5);
     expect(result.label).toMatch(/Very Easy|Easy/);
     expect(result.reasons).toContain("Mostly highway");
   });

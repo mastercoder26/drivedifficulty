@@ -9,9 +9,11 @@ describe("polyline utilities", () => {
     expect(points[0]).toHaveProperty("lng");
   });
 
-  it("samples evenly spaced points", () => {
+  it("samples evenly spaced points up to target count", () => {
     const encoded = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
+    const decoded = decodePolyline(encoded);
     const sampled = samplePolylinePoints(encoded, 10);
-    expect(sampled.length).toBe(10);
+    expect(sampled.length).toBe(Math.min(decoded.length, 10));
+    expect(sampled.length).toBeGreaterThan(0);
   });
 });
