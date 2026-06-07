@@ -1,12 +1,13 @@
 # Drive Difficulty — Backend
 
-TypeScript Vercel API that scores driving routes on a 0–10 difficulty scale using Google Routes and Roads APIs.
+TypeScript Vercel API that scores driving routes on a calibrated 0–10 workload scale using Google Routes/Roads APIs, a hybrid deterministic + ML residual model, and optional Supabase feedback logging.
 
 ## Prerequisites
 
 - Node.js 18+
 - [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`)
 - Google Cloud project with billing enabled
+- *(Optional)* Supabase project for prediction logging and retraining
 
 ## Google Cloud Setup
 
@@ -25,7 +26,7 @@ TypeScript Vercel API that scores driving routes on a 0–10 difficulty scale us
 ```bash
 cd backend
 npm install
-cp ../.env.example ../.env.local   # or backend/.env.local
+cp ../.env.example ../.env.local
 ```
 
 Set environment variables in `.env.local`:
@@ -33,7 +34,11 @@ Set environment variables in `.env.local`:
 ```
 GOOGLE_MAPS_API_KEY=your_key_here
 ALLOWED_ORIGINS=*
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
+
+Run the Supabase migration in `backend/supabase/migrations/001_predictions.sql` if using feedback logging.
 
 Run the dev server:
 
@@ -52,7 +57,9 @@ curl -X POST http://localhost:3000/api/route/difficulty \
     "origin": "Austin, TX",
     "destination": "Dallas, TX",
     "departureTime": "2026-06-06T17:30:00Z",
-    "includeAlternates": true
+    "includeAlternates": true,
+    "hoursSlept": 7,
+    "continuousDriveMinutes": 45
   }'
 ```
 
@@ -61,23 +68,24 @@ curl -X POST http://localhost:3000/api/route/difficulty \
 ```bash
 cd backend
 npm test
+npm run build
 ```
 
-Unit tests cover the scoring engine with fixtures for highway, urban, and traffic scenarios.
+Unit tests cover highway, urban, traffic, long-drive fatigue, merge clusters, and exchange-heavy routes.
 
 ## Deploy to Vercel
 
 ```bash
 cd backend
-vercel link          # link to a Vercel project
+vercel link
 vercel env add GOOGLE_MAPS_API_KEY
 vercel env add ALLOWED_ORIGINS
+vercel env add SUPABASE_URL
+vercel env add SUPABASE_SERVICE_ROLE_KEY
 vercel deploy
 ```
 
-Set the root directory to `backend/` in your Vercel project settings, or deploy from the `backend` folder.
-
-Production URL: `https://<your-project>.vercel.app/api/route/difficulty`
+Set the root directory to `backend/` in your Vercel project settings.
 
 ## API
 
@@ -90,40 +98,43 @@ Production URL: `https://<your-project>.vercel.app/api/route/difficulty`
 | `origin` | string | yes | Start address |
 | `destination` | string | yes | End address |
 | `departureTime` | string | no | RFC 3339 departure time for traffic-aware routing |
-| `includeAlternates` | boolean | no | Request up to 3 alternate routes |
+| `includeAlternates` | boolean | no | Request alternate routes |
+| `hoursSlept` | number | no | Driver sleep hours (default 7) |
+| `continuousDriveMinutes` | number | no | Prior continuous driving (default route duration) |
 
-**Response:**
+**Response highlights:**
+
+- `score` — calibrated 0–10 difficulty
+- `uncalibratedScore`, `breakdown`, `contributions`, `uncertainty`, `hotspots`
+- `predictionId` — present when Supabase logging succeeds
+- `requestFeedback` — active-learning prompt flag
+
+### `POST /api/route/feedback`
+
+Submit user feedback for a logged prediction:
 
 ```json
 {
-  "primaryRoute": {
-    "score": 4.2,
-    "label": "Easy",
-    "reasons": ["Mostly highway", "Light traffic"],
-    "breakdown": { "highway": 0.18, "speed": 0.42, "maneuvers": 0.31, "traffic": 0.12 },
-    "distanceMeters": 312000,
-    "durationSeconds": 10800,
-    "staticDurationSeconds": 9900,
-    "trafficDelaySeconds": 900,
-    "polyline": "encoded...",
-    "bounds": { "southwest": { "lat": 30.2, "lng": -97.8 }, "northeast": { "lat": 32.8, "lng": -96.8 } }
-  },
-  "alternateRoutes": [
-    { "...": "same shape", "scoreDelta": -0.5 }
-  ]
+  "predictionId": "uuid",
+  "userRating": 7,
+  "alternateSelected": false
 }
 ```
 
-### Scoring model
+## Hybrid scoring model
 
-| Factor | Weight | Range |
-|--------|--------|-------|
-| Non-highway complexity | 35% | 0–1 |
-| Speed intensity | 30% | 0–1 |
-| Maneuver density | 20% | 0–1 |
-| Traffic stress | 15% | 0–1 |
+Pipeline: **segments → features → base score + segment aggregation → fatigue → ML residual → isotonic calibration**.
 
-Final score = weighted sum × 10 (one decimal).
+| Component | Weight / role |
+|-----------|----------------|
+| Speed (S) | 30% of base score |
+| Merges/interchanges (M) | 25% — includes exponential merge spacing |
+| Turns/maneuvers (T) | 15% |
+| Traffic (C) | 15% |
+| Length/monotony (L) | 15% |
+| Fatigue | duration, circadian, sleep, continuous drive |
+| Segment aggregation | 55% mean + 25% P90 + 20% max local difficulty |
+| ML residual | LightGBM ONNX correction (optional) |
 
 | Score | Label |
 |-------|-------|
@@ -133,28 +144,42 @@ Final score = weighted sum × 10 (one decimal).
 | 6 – 8 | Hard |
 | 8 – 10 | Very Hard |
 
+## ML retraining
+
+```bash
+pip install -r ml/requirements.txt
+python ml/export_training_data.py   # requires Supabase
+python ml/train.py --csv ml/training.csv
+python ml/export_onnx.py --model ml/artifacts/residual.lgb --output backend/models/residual_v1.onnx
+```
+
+Weekly CI: `.github/workflows/retrain-model.yml`
+
 ## Project structure
 
 ```
 backend/
-├── api/route/difficulty.ts    # Vercel serverless handler
-├── src/
-│   ├── google/
-│   │   ├── routes.ts          # Google Routes computeRoutes client
-│   │   └── roads.ts           # snapToRoads + speedLimits
-│   ├── scoring/
-│   │   ├── index.ts           # Scoring orchestrator
-│   │   ├── highway.ts         # Highway share heuristics
-│   │   ├── speed.ts           # Speed intensity
-│   │   ├── maneuvers.ts       # Maneuver complexity
-│   │   ├── traffic.ts         # Traffic stress
-│   │   ├── reasons.ts         # Human-readable reasons
-│   │   ├── labels.ts          # Score → label mapping
-│   │   └── smoothstep.ts      # Normalization helper
-│   ├── utils/
-│   │   ├── polyline.ts        # Decode + sample polylines
-│   │   └── duration.ts        # Parse protobuf durations
-│   └── types.ts
-├── vercel.json
-└── package.json
+├── api/route/
+│   ├── difficulty.ts          # Score routes + log predictions
+│   └── feedback.ts            # User feedback endpoint
+├── src/scoring/
+│   ├── index.ts               # Hybrid orchestrator
+│   ├── segments.ts            # Segment extraction + local scoring
+│   ├── features.ts            # Route feature vector
+│   ├── baseScore.ts           # S/M/T/C/L base score
+│   ├── mergeBurden.ts         # Merge cluster + spacing
+│   ├── segmentAggregate.ts    # P90/max aggregation
+│   ├── fatigue.ts             # Fatigue + raw score blend
+│   ├── calibration.ts         # Isotonic calibration
+│   ├── mlResidual.ts          # ONNX inference
+│   ├── uncertainty.ts         # Confidence bands
+│   ├── explain.ts             # Factor contributions + hotspots
+│   └── activeLearning.ts      # Feedback prompt triggers
+├── src/db/supabase.ts         # Prediction + feedback storage
+├── supabase/migrations/       # Postgres schema
+├── models/                    # ONNX artifacts
+└── features.schema.json       # Shared feature schema
+ml/                            # Python training pipeline
+shared/features.schema.json    # Canonical feature order
+ios/                           # SwiftUI client
 ```

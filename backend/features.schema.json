@@ -1,0 +1,33 @@
+{
+  "features": [
+    "meanSpeedMph",
+    "maxSpeedMph",
+    "fractionAbove45Mph",
+    "fractionAbove60Mph",
+    "durationMinutes",
+    "distanceMiles",
+    "stepCount",
+    "turnDensity",
+    "leftTurnCount",
+    "rampCount",
+    "mergeCount",
+    "interchangeDensity",
+    "exponentialSpacing",
+    "mergeClusterCount",
+    "weaveSectionScore",
+    "trafficRatio",
+    "trafficVariance",
+    "nighttimeShare",
+    "urbanShare",
+    "highwayShare",
+    "longestHighwaySegmentMiles",
+    "monotonyScore",
+    "decisionPointDensity",
+    "segmentP90Difficulty",
+    "segmentMaxDifficulty",
+    "laneChangeUrgency",
+    "maneuversPer10Mi",
+    "stepsPerMile",
+    "delayRatio"
+  ]
+}

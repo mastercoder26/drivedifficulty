@@ -4,6 +4,7 @@ struct HomeView: View {
     @State private var origin = ""
     @State private var destination = ""
     @State private var departureTime = Date().addingTimeInterval(15 * 60)
+    @State private var hoursSlept = 7.0
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var navigationPath = NavigationPath()
@@ -44,10 +45,14 @@ struct HomeView: View {
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
                     )
+
+                    Stepper(value: $hoursSlept, in: 4...12, step: 0.5) {
+                        Text("Hours slept: \(hoursSlept, specifier: "%.1f")")
+                    }
                 } header: {
                     Text("When")
                 } footer: {
-                    Text("Traffic estimates use your selected departure time.")
+                    Text("Traffic and fatigue estimates use departure time and sleep.")
                 }
 
                 if let errorMessage {
@@ -93,7 +98,8 @@ struct HomeView: View {
                 origin: origin,
                 destination: destination,
                 departureTime: departureTime,
-                includeAlternates: true
+                includeAlternates: true,
+                hoursSlept: hoursSlept
             )
 
             let result = RouteAnalysisResult(

@@ -8,6 +8,15 @@ struct RouteDifficultyRequest: Encodable {
     let destination: String
     let departureTime: String
     let includeAlternates: Bool
+    let hoursSlept: Double?
+    let continuousDriveMinutes: Double?
+}
+
+struct FeedbackRequest: Encodable {
+    let predictionId: String
+    let userRating: Double?
+    let routeRejected: Bool?
+    let alternateSelected: Bool?
 }
 
 // MARK: - Response
@@ -21,9 +30,17 @@ struct ScoredRoute: Decodable, Identifiable, Hashable {
     var id: String { polyline.prefix(32).description }
 
     let score: Double
+    let uncalibratedScore: Double?
     let label: DifficultyLabel
     let reasons: [String]
     let breakdown: DifficultyBreakdown
+    let contributions: [FactorContribution]?
+    let uncertainty: ScoreUncertainty?
+    let hotspots: [SegmentHotspot]?
+    let predictionId: String?
+    let modelVersion: String?
+    let requestFeedback: Bool?
+    let feedbackReasons: [String]?
     let distanceMeters: Int
     let durationSeconds: Int
     let staticDurationSeconds: Int
@@ -41,20 +58,64 @@ struct ScoredRoute: Decodable, Identifiable, Hashable {
     }
 }
 
+struct FactorContribution: Decodable, Identifiable {
+    var id: String { factor }
+    let factor: String
+    let label: String
+    let value: Double
+    let weight: Double
+    let contribution: Double
+    let share: Double
+}
+
+struct ScoreUncertainty: Decodable {
+    let low: Double
+    let high: Double
+    let confidence: Double
+    let spread: Double
+
+    var formattedBand: String {
+        String(format: "%.1f – %.1f", low, high)
+    }
+}
+
+struct SegmentHotspot: Decodable, Identifiable {
+    var id: Int { segmentIndex }
+    let segmentIndex: Int
+    let difficulty: Double
+    let cumulativeSecondsFromStart: Double
+    let label: String?
+}
+
 struct DifficultyBreakdown: Decodable {
+    let speed: Double?
+    let merges: Double?
+    let turns: Double?
+    let traffic: Double
+    let length: Double?
+    let fatigue: Double?
     let highway: Double
     let maneuvers: Double
-    let traffic: Double
     let navDensity: Double
     let effort: Double
 
     var items: [(key: String, title: String, value: Double)] {
-        [
-            ("highway",    "Road Type",   highway),
-            ("maneuvers",  "Turns",       maneuvers),
-            ("traffic",    "Traffic",     traffic),
-            ("navDensity", "Navigation",  navDensity),
-            ("effort",     "Drive Length", effort)
+        if speed != nil {
+            return [
+                ("speed", "Speed", speed ?? highway),
+                ("merges", "Merges", merges ?? 0),
+                ("turns", "Turns", turns ?? maneuvers),
+                ("traffic", "Traffic", traffic),
+                ("length", "Length", length ?? effort),
+                ("fatigue", "Fatigue", fatigue ?? 0)
+            ]
+        }
+        return [
+            ("highway", "Road Type", highway),
+            ("maneuvers", "Turns", maneuvers),
+            ("traffic", "Traffic", traffic),
+            ("navDensity", "Navigation", navDensity),
+            ("effort", "Drive Length", effort)
         ]
     }
 }
@@ -128,6 +189,14 @@ extension ScoredRoute {
     var formattedDelay: String? {
         guard trafficDelaySeconds > 0 else { return nil }
         return "+\(Self.formatDuration(seconds: trafficDelaySeconds))"
+    }
+
+    var formattedScoreWithUncertainty: String {
+        guard let uncertainty else {
+            return String(format: "%.1f", score)
+        }
+        let half = uncertainty.spread / 2
+        return String(format: "%.1f ± %.1f", score, half)
     }
 
     static func formatDuration(seconds: Int) -> String {

@@ -15,8 +15,8 @@ struct AlternateRouteCard: View {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(String(format: "%.1f", route.score))
-                            .font(.title2.weight(.bold).monospacedDigit())
+                        Text(route.formattedScoreWithUncertainty)
+                            .font(.title3.weight(.bold).monospacedDigit())
                             .foregroundStyle(accentColor)
 
                         Text(route.label.rawValue)
@@ -63,7 +63,7 @@ struct AlternateRouteCard: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Alternate route, score \(String(format: "%.1f", route.score)), \(route.label.rawValue)")
+        .accessibilityLabel("Alternate route, score \(route.formattedScoreWithUncertainty), \(route.label.rawValue)")
     }
 
     private func deltaText(_ delta: Double) -> String {
@@ -76,9 +76,21 @@ struct AlternateRouteCard: View {
     AlternateRouteCard(
         route: ScoredRoute(
             score: 5.1,
+            uncalibratedScore: 5.0,
             label: .moderate,
             reasons: ["Many turns"],
-            breakdown: DifficultyBreakdown(highway: 0.3, speed: 0.4, maneuvers: 0.6, traffic: 0.2),
+            breakdown: DifficultyBreakdown(
+                speed: 0.3, merges: 0.2, turns: 0.6, traffic: 0.2,
+                length: 0.3, fatigue: 0.1,
+                highway: 0.3, maneuvers: 0.6, navDensity: 0.4, effort: 0.3
+            ),
+            contributions: nil,
+            uncertainty: ScoreUncertainty(low: 4.5, high: 5.7, confidence: 0.7, spread: 1.2),
+            hotspots: nil,
+            predictionId: nil,
+            modelVersion: nil,
+            requestFeedback: nil,
+            feedbackReasons: nil,
             distanceMeters: 12000,
             durationSeconds: 1800,
             staticDurationSeconds: 1500,

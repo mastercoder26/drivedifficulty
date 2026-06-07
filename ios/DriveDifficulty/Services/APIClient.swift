@@ -39,7 +39,9 @@ struct APIClient {
         origin: String,
         destination: String,
         departureTime: Date,
-        includeAlternates: Bool = true
+        includeAlternates: Bool = true,
+        hoursSlept: Double? = nil,
+        continuousDriveMinutes: Double? = nil
     ) async throws -> RouteDifficultyResponse {
         let endpoint = baseURL.appendingPathComponent("api/route/difficulty")
 
@@ -55,7 +57,9 @@ struct APIClient {
             origin: origin.trimmingCharacters(in: .whitespacesAndNewlines),
             destination: destination.trimmingCharacters(in: .whitespacesAndNewlines),
             departureTime: formatter.string(from: departureTime),
-            includeAlternates: includeAlternates
+            includeAlternates: includeAlternates,
+            hoursSlept: hoursSlept,
+            continuousDriveMinutes: continuousDriveMinutes
         )
 
         request.httpBody = try JSONEncoder().encode(body)
@@ -95,6 +99,32 @@ struct APIClient {
             return String(data: data, encoding: .utf8)
         }
         return body.error ?? body.message
+    }
+
+    func submitFeedback(
+        predictionId: String,
+        userRating: Double?,
+        routeRejected: Bool = false,
+        alternateSelected: Bool = false
+    ) async throws {
+        let endpoint = baseURL.appendingPathComponent("api/route/feedback")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = FeedbackRequest(
+            predictionId: predictionId,
+            userRating: userRating,
+            routeRejected: routeRejected,
+            alternateSelected: alternateSelected
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.invalidResponse
+        }
     }
 }
 

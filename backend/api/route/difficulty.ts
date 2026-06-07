@@ -2,7 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { computeRoutes } from "../../src/google/routes.js";
 import { enrichRouteWithSpeedLimits } from "../../src/google/roads.js";
 import { scoreRoutes } from "../../src/scoring/index.js";
-import type { DifficultyRequest } from "../../src/types.js";
+import { buildFeaturesFromRoute } from "../../src/scoring/features.js";
+import {
+  loadActiveCalibrationKnots,
+  logPrediction,
+} from "../../src/db/supabase.js";
+import { setCalibrationKnots } from "../../src/scoring/calibration.js";
+import { createHash } from "node:crypto";
+import { MODEL_VERSION, type DifficultyRequest } from "../../src/types.js";
 
 function getAllowedOrigins(): string[] {
   const raw = process.env.ALLOWED_ORIGINS ?? "*";
@@ -29,8 +36,14 @@ function validateRequest(body: unknown): DifficultyRequest {
     throw new Error("Request body must be a JSON object");
   }
 
-  const { origin, destination, departureTime, includeAlternates } =
-    body as DifficultyRequest;
+  const {
+    origin,
+    destination,
+    departureTime,
+    includeAlternates,
+    hoursSlept,
+    continuousDriveMinutes,
+  } = body as DifficultyRequest;
 
   if (!origin || typeof origin !== "string") {
     throw new Error("origin is required and must be a string");
@@ -45,7 +58,19 @@ function validateRequest(body: unknown): DifficultyRequest {
     departureTime:
       typeof departureTime === "string" ? departureTime : undefined,
     includeAlternates: includeAlternates ?? false,
+    hoursSlept: typeof hoursSlept === "number" ? hoursSlept : undefined,
+    continuousDriveMinutes:
+      typeof continuousDriveMinutes === "number"
+        ? continuousDriveMinutes
+        : undefined,
   };
+}
+
+function routeHash(origin: string, destination: string, polyline: string): string {
+  return createHash("sha256")
+    .update(`${origin}|${destination}|${polyline}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 export default async function handler(
@@ -71,6 +96,9 @@ export default async function handler(
   }
 
   try {
+    const knots = await loadActiveCalibrationKnots(MODEL_VERSION);
+    if (knots) setCalibrationKnots(knots);
+
     const request = validateRequest(req.body);
     const routes = await computeRoutes({
       origin: request.origin,
@@ -84,8 +112,44 @@ export default async function handler(
       routes.map((route) => enrichRouteWithSpeedLimits(route, apiKey))
     );
 
-    const stepSpeedMaps = optionsList.map((speedMap) => ({ stepSpeedsMph: speedMap }));
-    const { primary, alternates } = scoreRoutes(routes, stepSpeedMaps);
+    const scoreOptions = routes.map((_route, i) => ({
+      stepSpeedsMph: optionsList[i],
+      departureTime: request.departureTime,
+      hoursSlept: request.hoursSlept,
+      continuousDriveMinutes: request.continuousDriveMinutes,
+    }));
+
+    const { primary, alternates } = scoreRoutes(routes, scoreOptions);
+
+    try {
+      const { features } = buildFeaturesFromRoute(routes[0]!, {
+        stepSpeedsMph: optionsList[0],
+        departureTime: request.departureTime,
+      });
+
+      const predictionId = await logPrediction({
+        routeHash: routeHash(
+          request.origin,
+          request.destination,
+          primary.polyline
+        ),
+        origin: request.origin,
+        destination: request.destination,
+        departureTime: request.departureTime,
+        features: features as unknown as Record<string, unknown>,
+        rawScore: primary.uncalibratedScore ?? primary.score,
+        calibratedScore: primary.score,
+        uncertaintyLow: primary.uncertainty.low,
+        uncertaintyHigh: primary.uncertainty.high,
+        modelVersion: primary.modelVersion ?? MODEL_VERSION,
+      });
+
+      if (predictionId) {
+        primary.predictionId = predictionId;
+      }
+    } catch {
+      // Logging must not break the scoring response
+    }
 
     res.status(200).json({
       primaryRoute: primary,

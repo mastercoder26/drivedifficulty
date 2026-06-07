@@ -33,18 +33,55 @@ export interface SpeedLimitPoint {
 }
 
 export interface ScoringBreakdown {
+  speed: number;
+  merges: number;
+  turns: number;
+  traffic: number;
+  length: number;
+  fatigue: number;
+  /** Legacy aliases for backward compatibility */
   highway: number;
   maneuvers: number;
-  traffic: number;
   navDensity: number;
   effort: number;
 }
 
+export interface FactorContribution {
+  factor: string;
+  label: string;
+  value: number;
+  weight: number;
+  contribution: number;
+  share: number;
+}
+
+export interface SegmentHotspot {
+  segmentIndex: number;
+  difficulty: number;
+  cumulativeSecondsFromStart: number;
+  label?: string;
+}
+
+export interface ScoreUncertainty {
+  low: number;
+  high: number;
+  confidence: number;
+  spread: number;
+}
+
 export interface ScoredRoute {
   score: number;
+  uncalibratedScore?: number;
   label: string;
   reasons: string[];
   breakdown: ScoringBreakdown;
+  contributions: FactorContribution[];
+  uncertainty: ScoreUncertainty;
+  hotspots: SegmentHotspot[];
+  predictionId?: string;
+  modelVersion?: string;
+  requestFeedback?: boolean;
+  feedbackReasons?: string[];
   distanceMeters: number;
   durationSeconds: number;
   staticDurationSeconds: number;
@@ -67,6 +104,16 @@ export interface DifficultyRequest {
   destination: string;
   departureTime?: string;
   includeAlternates?: boolean;
+  hoursSlept?: number;
+  continuousDriveMinutes?: number;
+}
+
+export interface FeedbackRequest {
+  predictionId: string;
+  userRating?: number;
+  routeRejected?: boolean;
+  alternateSelected?: boolean;
+  comment?: string;
 }
 
 export interface ScoringContext {
@@ -76,4 +123,36 @@ export interface ScoringContext {
   stepsPerMile: number;
   durationHours: number;
   breakdown: ScoringBreakdown;
+  mergeClusterCount?: number;
+  nighttimeShare?: number;
+  hoursSlept?: number;
+  hardestSegmentSummary?: string;
 }
+
+export interface DriverContext {
+  departureTime?: Date;
+  hoursSlept: number;
+  continuousDriveMinutes: number;
+}
+
+export interface PredictionLogPayload {
+  routeHash: string;
+  origin: string;
+  destination: string;
+  departureTime?: string;
+  features: Record<string, unknown>;
+  rawScore: number;
+  calibratedScore: number;
+  uncertaintyLow: number;
+  uncertaintyHigh: number;
+  modelVersion: string;
+}
+
+export interface ScoringOptions {
+  stepSpeedsMph?: Map<number, number>;
+  departureTime?: string;
+  hoursSlept?: number;
+  continuousDriveMinutes?: number;
+}
+
+export const MODEL_VERSION = "hybrid-v1";

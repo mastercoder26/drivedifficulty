@@ -1,117 +1,87 @@
-import type { ScoringBreakdown, ScoringContext } from "../types.js";
+import type { ParsedRoute, ScoringBreakdown, ScoringContext } from "../types.js";
+import type { BaseScoreComponents } from "./baseScore.js";
+import type { FatigueResult } from "./fatigue.js";
+import type { RouteFeatures } from "./features.js";
 
-const WEIGHTS = {
-  highway:    0.30,
-  maneuvers:  0.25,
-  traffic:    0.20,
-  navDensity: 0.15,
-  effort:     0.10,
-} as const;
+const FACTOR_REASONS: Array<{
+  key: keyof ScoringBreakdown;
+  threshold: number;
+  message: string;
+}> = [
+  { key: "speed", threshold: 0.55, message: "High-speed environment" },
+  { key: "merges", threshold: 0.5, message: "Complex merges/exchanges" },
+  { key: "turns", threshold: 0.55, message: "Many turns" },
+  { key: "traffic", threshold: 0.5, message: "Heavy traffic" },
+  { key: "length", threshold: 0.55, message: "Long drive" },
+  { key: "fatigue", threshold: 0.45, message: "Fatigue-sensitive timing" },
+];
 
-type Factor = keyof typeof WEIGHTS;
+const WEIGHTS: Record<string, number> = {
+  speed: 0.3,
+  merges: 0.25,
+  turns: 0.15,
+  traffic: 0.15,
+  length: 0.15,
+  fatigue: 0.1,
+};
 
-interface ReasonCandidate {
-  reason: string;
-  factor: Factor;
-}
+export function generateReasons(
+  ctx: ScoringContext,
+  features?: RouteFeatures,
+  base?: BaseScoreComponents,
+  fatigue?: FatigueResult
+): string[] {
+  const reasons: Array<{ text: string; weight: number }> = [];
 
-function factorContribution(
-  factor: Factor,
-  breakdown: ScoringBreakdown
-): number {
-  return WEIGHTS[factor] * breakdown[factor];
-}
-
-function highwayReasons(highwayShare: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (highwayShare >= 0.65) {
-    reasons.push({ reason: "Mostly highway", factor: "highway" });
-  }
-  if (highwayShare <= 0.25) {
-    reasons.push({ reason: "Mostly local roads", factor: "highway" });
-  }
-  return reasons;
-}
-
-function maneuverReasons(maneuversPer10Mi: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (maneuversPer10Mi >= 8) {
-    reasons.push({ reason: "Many turns", factor: "maneuvers" });
-  } else if (maneuversPer10Mi <= 2) {
-    reasons.push({ reason: "Few turns", factor: "maneuvers" });
-  }
-  return reasons;
-}
-
-function trafficReasons(delayRatio: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (delayRatio >= 0.25) {
-    reasons.push({ reason: "Heavy traffic", factor: "traffic" });
-  } else if (delayRatio >= 0.1) {
-    reasons.push({ reason: "Moderate traffic", factor: "traffic" });
-  } else if (delayRatio < 0.05) {
-    reasons.push({ reason: "Light traffic", factor: "traffic" });
-  }
-  return reasons;
-}
-
-function navDensityReasons(stepsPerMile: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (stepsPerMile >= 1.0) {
-    reasons.push({ reason: "Complex navigation", factor: "navDensity" });
-  } else if (stepsPerMile <= 0.2) {
-    reasons.push({ reason: "Simple route", factor: "navDensity" });
-  }
-  return reasons;
-}
-
-function effortReasons(durationHours: number): ReasonCandidate[] {
-  const reasons: ReasonCandidate[] = [];
-  if (durationHours >= 2.5) {
-    reasons.push({ reason: "Long drive", factor: "effort" });
-  } else if (durationHours >= 1.5) {
-    reasons.push({ reason: "Extended drive", factor: "effort" });
-  }
-  return reasons;
-}
-
-export function generateReasons(ctx: ScoringContext): string[] {
-  const candidates: ReasonCandidate[] = [
-    ...highwayReasons(ctx.highwayShare),
-    ...maneuverReasons(ctx.maneuversPer10Mi),
-    ...trafficReasons(ctx.delayRatio),
-    ...navDensityReasons(ctx.stepsPerMile),
-    ...effortReasons(ctx.durationHours),
-  ];
-
-  // Sort by weighted contribution so dominant factors surface first
-  const ranked = candidates
-    .map((c) => ({
-      reason: c.reason,
-      contribution: factorContribution(c.factor, ctx.breakdown),
-    }))
-    .sort((a, b) => b.contribution - a.contribution);
-
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const candidate of ranked) {
-    if (seen.has(candidate.reason)) continue;
-    seen.add(candidate.reason);
-    result.push(candidate.reason);
-    if (result.length >= 4) break;
-  }
-
-  // Always return at least 2 reasons even if contributions are small
-  if (result.length < 2) {
-    for (const candidate of ranked) {
-      if (!seen.has(candidate.reason)) {
-        seen.add(candidate.reason);
-        result.push(candidate.reason);
-      }
-      if (result.length >= 2) break;
+  for (const rule of FACTOR_REASONS) {
+    const value = ctx.breakdown[rule.key] ?? 0;
+    if (value >= rule.threshold) {
+      reasons.push({ text: rule.message, weight: (WEIGHTS[rule.key] ?? 0.1) * value });
     }
   }
 
-  return result.slice(0, 4);
+  if (ctx.highwayShare >= 0.65) {
+    reasons.push({ text: "Mostly highway", weight: 0.12 });
+  } else if (ctx.highwayShare <= 0.2) {
+    reasons.push({ text: "Mostly local roads", weight: 0.18 });
+  }
+
+  if (ctx.maneuversPer10Mi >= 8) {
+    reasons.push({ text: "Many turns", weight: 0.2 });
+  }
+
+  if (ctx.delayRatio >= 0.2) {
+    reasons.push({
+      text: ctx.delayRatio >= 0.35 ? "Heavy traffic" : "Moderate traffic",
+      weight: 0.15 + ctx.delayRatio,
+    });
+  }
+
+  if (ctx.durationHours >= 2.5) {
+    reasons.push({ text: "Long sustained drive", weight: 0.14 });
+  }
+
+  if (features && features.mergeClusterCount >= 1) {
+    reasons.push({ text: "Clustered interchanges", weight: 0.22 });
+  }
+
+  if (fatigue && fatigue.circadianPenalty > 0.5) {
+    reasons.push({ text: "Late-night driving window", weight: 0.16 });
+  }
+
+  if (fatigue && fatigue.sleepPenalty > 0.35) {
+    reasons.push({ text: "Low sleep increases difficulty", weight: 0.17 });
+  }
+
+  if (features && features.segmentMaxDifficulty >= 0.6) {
+    reasons.push({ text: "Demanding segment hotspot", weight: 0.19 });
+  }
+
+  reasons.sort((a, b) => b.weight - a.weight);
+  const unique: string[] = [];
+  for (const r of reasons) {
+    if (!unique.includes(r.text)) unique.push(r.text);
+    if (unique.length >= 4) break;
+  }
+  return unique;
 }

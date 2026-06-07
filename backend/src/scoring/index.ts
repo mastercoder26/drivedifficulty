@@ -3,69 +3,86 @@ import type {
   ParsedRoute,
   ScoredRoute,
   ScoringContext,
+  ScoringOptions,
 } from "../types.js";
-import { computeHighwayShare } from "./highway.js";
-import { computeManeuverComplexity } from "./maneuvers.js";
-import { computeNavigationDensity } from "./navigationDensity.js";
-import { computeSustainedEffort } from "./sustainedEffort.js";
+import { MODEL_VERSION } from "../types.js";
+import { scoreSegmentLocal } from "./segments.js";
+import { buildFeaturesFromRoute } from "./features.js";
+import { aggregateSegmentScores } from "./segmentAggregate.js";
+import { computeBaseScore } from "./baseScore.js";
+import { computeFatigue, computeRawScore } from "./fatigue.js";
+import {
+  buildBreakdown,
+  buildHotspots,
+  explainPrediction,
+} from "./explain.js";
+import { getCalibrator } from "./calibration.js";
+import { applyUncertaintyBand, estimateUncertainty } from "./uncertainty.js";
+import { predictMlResidualSync } from "./mlResidual.js";
+import { shouldRequestFeedback } from "./activeLearning.js";
 import { generateReasons } from "./reasons.js";
 import { scoreToLabel } from "./labels.js";
-import { computeTrafficStress } from "./traffic.js";
 
-// Five-factor weighted model.
-// Speed intensity removed — high speed on a straight highway is captured by the
-// highway U-shape baseline; raw avgMph was inflating easy interstate routes to ~3.
-const WEIGHTS = {
-  highway:    0.30, // road type complexity (U-shape: local=hard, highway=baseline)
-  maneuvers:  0.25, // turn/decision complexity per mile
-  traffic:    0.20, // delay vs. free-flow time
-  navDensity: 0.15, // navigation steps per mile (map-check frequency)
-  effort:     0.10, // sustained attention required for long drives
-} as const;
-
-export interface ScoreRouteOptions {
-  stepSpeedsMph?: Map<number, number>;
-}
+export type ScoreRouteOptions = ScoringOptions & {
+  predictionId?: string;
+};
 
 export function scoreRoute(
   route: ParsedRoute,
   options: ScoreRouteOptions = {}
 ): ScoredRoute {
-  const { stepSpeedsMph } = options;
+  const hoursSlept = options.hoursSlept ?? 7;
+  const continuousDriveMinutes =
+    options.continuousDriveMinutes ?? route.staticDurationSeconds / 60;
 
-  const highway    = computeHighwayShare(route.steps, stepSpeedsMph);
-  const maneuvers  = computeManeuverComplexity(route.steps, route.distanceMeters);
-  const traffic    = computeTrafficStress(route.durationSeconds, route.staticDurationSeconds);
-  const navDensity = computeNavigationDensity(route.steps, route.distanceMeters);
-  const effort     = computeSustainedEffort(route.staticDurationSeconds);
+  const { segments, features } = buildFeaturesFromRoute(route, {
+    stepSpeedsMph: options.stepSpeedsMph,
+    departureTime: options.departureTime,
+  });
 
-  const breakdown = {
-    highway:    highway.subscore,
-    maneuvers:  maneuvers.subscore,
-    traffic:    traffic.subscore,
-    navDensity: navDensity.subscore,
-    effort:     effort.subscore,
-  };
+  const segmentScores = segments.map(scoreSegmentLocal);
+  const segmentAgg = aggregateSegmentScores(segmentScores);
+  const D_route = segmentAgg.aggregated;
 
-  const rawScore =
-    WEIGHTS.highway    * breakdown.highway    +
-    WEIGHTS.maneuvers  * breakdown.maneuvers  +
-    WEIGHTS.traffic    * breakdown.traffic    +
-    WEIGHTS.navDensity * breakdown.navDensity +
-    WEIGHTS.effort     * breakdown.effort;
+  const base = computeBaseScore(features);
+  const fatigue = computeFatigue(features, {
+    departureTime: options.departureTime
+      ? new Date(options.departureTime)
+      : undefined,
+    hoursSlept,
+    continuousDriveMinutes,
+  });
+  const rawScore = computeRawScore(D_route, base.D_base, fatigue, features);
 
-  const score = Math.round(rawScore * 10 * 10) / 10;
+  const ml = predictMlResidualSync(features);
+  const uncalibrated = Math.max(0, Math.min(10, rawScore + ml.residual));
+
+  const calibrator = getCalibrator();
+  const score = Math.round(calibrator.transform(uncalibrated) * 10) / 10;
+
+  const breakdown = buildBreakdown(base, fatigue);
+  const contributions = explainPrediction(breakdown, features);
+  const hotspots = buildHotspots(segments, segmentScores);
 
   const ctx: ScoringContext = {
-    highwayShare:    highway.highwayShare,
-    maneuversPer10Mi: maneuvers.maneuversPer10Mi,
-    delayRatio:      traffic.delayRatio,
-    stepsPerMile:    navDensity.stepsPerMile,
-    durationHours:   effort.durationHours,
+    highwayShare: features.highwayShare,
+    maneuversPer10Mi: features.maneuversPer10Mi,
+    delayRatio: features.delayRatio,
+    stepsPerMile: features.stepsPerMile,
+    durationHours: features.durationHours,
     breakdown,
   };
 
-  const reasons = generateReasons(ctx);
+  const baseUncertainty = estimateUncertainty(features, Math.abs(ml.residual));
+  const uncertainty = applyUncertaintyBand(score, baseUncertainty);
+
+  const feedbackCheck = shouldRequestFeedback({
+    score,
+    uncertainty,
+  });
+
+  const reasons = generateReasons(ctx, features, base, fatigue);
+
   const trafficDelaySeconds = Math.max(
     0,
     route.durationSeconds - route.staticDurationSeconds
@@ -73,15 +90,23 @@ export function scoreRoute(
 
   return {
     score,
+    uncalibratedScore: Math.round(uncalibrated * 10) / 10,
     label: scoreToLabel(score),
-    reasons,
+    reasons: reasons.slice(0, 4),
     breakdown,
-    distanceMeters:       route.distanceMeters,
-    durationSeconds:      route.durationSeconds,
+    contributions,
+    uncertainty,
+    hotspots,
+    predictionId: options.predictionId,
+    modelVersion: MODEL_VERSION,
+    requestFeedback: feedbackCheck.shouldRequestFeedback,
+    feedbackReasons: feedbackCheck.reasons,
+    distanceMeters: route.distanceMeters,
+    durationSeconds: route.durationSeconds,
     staticDurationSeconds: route.staticDurationSeconds,
     trafficDelaySeconds,
     polyline: route.polyline,
-    bounds:   route.bounds,
+    bounds: route.bounds,
   };
 }
 
@@ -105,15 +130,22 @@ export function scoreRoutes(
 
   alternates.sort((a, b) => a.score - b.score);
 
+  const feedback = shouldRequestFeedback({
+    score: primary.score,
+    uncertainty: primary.uncertainty,
+    alternateScores: alternates.map((a) => a.score),
+  });
+  primary.requestFeedback = feedback.shouldRequestFeedback;
+  primary.feedbackReasons = feedback.reasons;
+
   return { primary, alternates };
 }
 
 export {
-  computeHighwayShare,
-  computeManeuverComplexity,
-  computeTrafficStress,
-  computeNavigationDensity,
-  computeSustainedEffort,
+  buildFeaturesFromRoute,
+  computeBaseScore,
+  computeFatigue,
+  aggregateSegmentScores,
   generateReasons,
   scoreToLabel,
 };

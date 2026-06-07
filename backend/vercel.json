@@ -10,6 +10,10 @@
     {
       "src": "/api/route/difficulty",
       "dest": "/api/route/difficulty.ts"
+    },
+    {
+      "src": "/api/route/feedback",
+      "dest": "/api/route/feedback.ts"
     }
   ]
 }
