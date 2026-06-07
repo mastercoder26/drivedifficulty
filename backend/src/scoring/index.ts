@@ -60,7 +60,7 @@ export function scoreRoute(
   const calibrator = getCalibrator();
   const score = Math.round(calibrator.transform(uncalibrated) * 10) / 10;
 
-  const breakdown = buildBreakdown(base, fatigue);
+  const breakdown = buildBreakdown(base, fatigue, features.durationHours);
   const contributions = explainPrediction(breakdown, features);
   const hotspots = buildHotspots(segments, segmentScores);
 
@@ -92,7 +92,7 @@ export function scoreRoute(
     score,
     uncalibratedScore: Math.round(uncalibrated * 10) / 10,
     label: scoreToLabel(score),
-    reasons: reasons.slice(0, 4),
+    reasons: reasons.slice(0, 6),
     breakdown,
     contributions,
     uncertainty,

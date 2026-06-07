@@ -58,12 +58,22 @@ function countWeaves(events: MergeEvent[]): number {
 }
 
 function countMergeClusters(events: MergeEvent[]): number {
-  if (events.length === 0) return 0;
-  let clusters = 1;
+  if (events.length < 2) return 0;
+
+  let clusters = 0;
+  let clusterSize = 1;
+
   for (let i = 1; i < events.length; i++) {
     const gap = events[i].distanceMeters - events[i - 1].distanceMeters;
-    if (gap > WEAVE_WINDOW_METERS * 2) clusters++;
+    if (gap > WEAVE_WINDOW_METERS * 2) {
+      if (clusterSize >= 2) clusters++;
+      clusterSize = 1;
+    } else {
+      clusterSize++;
+    }
   }
+  if (clusterSize >= 2) clusters++;
+
   return clusters;
 }
 

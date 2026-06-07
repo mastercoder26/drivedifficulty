@@ -3,6 +3,7 @@ import SwiftUI
 struct ResultsView: View {
     let result: RouteAnalysisResult
 
+    @Environment(\.openURL) private var openURL
     @State private var selectedRoute: ScoredRoute
     @State private var showFeedbackSheet = false
     @State private var feedbackRating: Double = 5
@@ -30,10 +31,14 @@ struct ResultsView: View {
                 scoreSection
                 mapSection
                 tripDetailsSection
+                navigationSection
                 if let hotspots = selectedRoute.hotspots, !hotspots.isEmpty {
                     hotspotsSection(hotspots)
                 }
                 breakdownSection
+                if let contributions = selectedRoute.contributions, !contributions.isEmpty {
+                    contributionsSection(contributions)
+                }
                 reasonsSection
                 feedbackSection
 
@@ -134,6 +139,55 @@ struct ResultsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private var navigationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Start Navigation")
+                .font(.headline)
+
+            HStack(spacing: 12) {
+                Button {
+                    openInAppleMaps()
+                } label: {
+                    Label("Apple Maps", systemImage: "map.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.0, green: 0.48, blue: 1.0))
+
+                Button {
+                    openInGoogleMaps()
+                } label: {
+                    Label("Google Maps", systemImage: "globe.americas.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func openInAppleMaps() {
+        guard let url = RouteNavigationService.appleMapsURL(
+            origin: result.origin,
+            destination: result.destination
+        ) else { return }
+        openURL(url)
+    }
+
+    private func openInGoogleMaps() {
+        guard let url = RouteNavigationService.googleMapsURL(
+            origin: result.origin,
+            destination: result.destination
+        ) else { return }
+        openURL(url)
+    }
+
     private func hotspotsSection(_ hotspots: [SegmentHotspot]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Difficulty Hotspots")
@@ -178,12 +232,35 @@ struct ResultsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private func contributionsSection(_ contributions: [FactorContribution]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Top Factors")
+                .font(.headline)
+
+            ForEach(contributions.prefix(5)) { entry in
+                BreakdownBarRow(
+                    title: entry.label,
+                    value: entry.share
+                )
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private var reasonsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Why this score")
                 .font(.headline)
 
-            ReasonChipFlowLayout(reasons: selectedRoute.reasons)
+            if selectedRoute.reasons.isEmpty {
+                Text("No specific difficulty factors identified for this route.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ReasonChipFlowLayout(reasons: selectedRoute.reasons)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -347,6 +424,8 @@ struct BreakdownBarRow: View {
     NavigationStack {
         ResultsView(
             result: RouteAnalysisResult(
+                origin: "Miami, FL",
+                destination: "Orlando, FL",
                 primaryRoute: ScoredRoute(
                     score: 4.2,
                     uncalibratedScore: 4.0,
@@ -357,7 +436,24 @@ struct BreakdownBarRow: View {
                         length: 0.45, fatigue: 0.20,
                         highway: 0.30, maneuvers: 0.35, navDensity: 0.20, effort: 0.45
                     ),
-                    contributions: nil,
+                    contributions: [
+                        FactorContribution(
+                            factor: "speed",
+                            label: "High-speed road burden",
+                            value: 0.30,
+                            weight: 0.3,
+                            contribution: 0.09,
+                            share: 0.35
+                        ),
+                        FactorContribution(
+                            factor: "length",
+                            label: "Length/monotony burden",
+                            value: 0.45,
+                            weight: 0.15,
+                            contribution: 0.0675,
+                            share: 0.26
+                        )
+                    ],
                     uncertainty: ScoreUncertainty(low: 3.6, high: 4.8, confidence: 0.75, spread: 1.2),
                     hotspots: [],
                     predictionId: nil,

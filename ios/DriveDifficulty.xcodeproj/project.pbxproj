@@ -18,6 +18,7 @@
 		A10000000000000000000009 /* RouteMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* RouteMapView.swift */; };
 		A1000000000000000000000A /* AlternateRouteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* AlternateRouteCard.swift */; };
 		A1000000000000000000000B /* AddressSearchField.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* AddressSearchField.swift */; };
+		A1000000000000000000000D /* RouteNavigationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* RouteNavigationService.swift */; };
 		A1000000000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -33,6 +34,7 @@
 		A20000000000000000000009 /* RouteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMapView.swift; sourceTree = "<group>"; };
 		A2000000000000000000000A /* AlternateRouteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlternateRouteCard.swift; sourceTree = "<group>"; };
 		A2000000000000000000000B /* AddressSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressSearchField.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* RouteNavigationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteNavigationService.swift; sourceTree = "<group>"; };
 		A2000000000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000E /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -104,6 +106,7 @@
 			children = (
 				A20000000000000000000005 /* APIClient.swift */,
 				A20000000000000000000006 /* PolylineDecoder.swift */,
+				A20000000000000000000010 /* RouteNavigationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -225,6 +228,7 @@
 				A10000000000000000000009 /* RouteMapView.swift in Sources */,
 				A1000000000000000000000A /* AlternateRouteCard.swift in Sources */,
 				A1000000000000000000000B /* AddressSearchField.swift in Sources */,
+				A1000000000000000000000D /* RouteNavigationService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

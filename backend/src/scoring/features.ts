@@ -2,6 +2,7 @@ import type { ParsedRoute } from "../types.js";
 import { computeHighwayShare, isHighwayStep } from "./highway.js";
 import { computeManeuverComplexity } from "./maneuvers.js";
 import { computeMergeBurden } from "./mergeBurden.js";
+import { computeTurnClustering } from "./turnClustering.js";
 import { aggregateSegmentScores, type SegmentAggregateResult } from "./segmentAggregate.js";
 import type { RouteSegment } from "./segments.js";
 import { segmentRoute } from "./segments.js";
@@ -22,6 +23,7 @@ export interface RouteFeatures {
   interchangeDensity: number;
   exponentialSpacing: number;
   mergeClusterCount: number;
+  weaveCount: number;
   weaveSectionScore: number;
   mergeBurdenSubscore: number;
   trafficRatio: number;
@@ -37,6 +39,11 @@ export interface RouteFeatures {
   segmentMeanDifficulty: number;
   segmentAggregated: number;
   laneChangeUrgency: number;
+  turnClusterCount: number;
+  closeTurnPairs: number;
+  turnSpacingPressure: number;
+  turnClusterSubscore: number;
+  sharpTurnCount: number;
   maneuversPer10Mi: number;
   stepsPerMile: number;
   delayRatio: number;
@@ -187,6 +194,7 @@ export function buildFeatures(input: BuildFeaturesInput): RouteFeatures {
       : 1;
   const delayRatio = Math.max(0, trafficRatio - 1);
   const merge = computeMergeBurden(route.steps, route.distanceMeters, trafficRatio);
+  const turnCluster = computeTurnClustering(route.steps, route.distanceMeters);
   const segmentAgg: SegmentAggregateResult = aggregateSegmentScores(segments);
 
   let leftTurnCount = 0;
@@ -226,6 +234,7 @@ export function buildFeatures(input: BuildFeaturesInput): RouteFeatures {
     interchangeDensity: merge.interchangeDensity,
     exponentialSpacing: merge.exponentialSpacing,
     mergeClusterCount: merge.mergeClusterCount,
+    weaveCount: merge.weaveCount,
     weaveSectionScore: merge.weaveSectionScore,
     mergeBurdenSubscore: merge.subscore,
     trafficRatio,
@@ -241,6 +250,11 @@ export function buildFeatures(input: BuildFeaturesInput): RouteFeatures {
     segmentMeanDifficulty: segmentAgg.mean,
     segmentAggregated: segmentAgg.aggregated,
     laneChangeUrgency: computeLaneChangeUrgency(segments),
+    turnClusterCount: turnCluster.turnClusterCount,
+    closeTurnPairs: turnCluster.closeTurnPairs,
+    turnSpacingPressure: turnCluster.turnSpacingPressure,
+    turnClusterSubscore: turnCluster.subscore,
+    sharpTurnCount: turnCluster.sharpTurnCount,
     maneuversPer10Mi: maneuvers.maneuversPer10Mi,
     stepsPerMile,
     delayRatio,
@@ -263,6 +277,7 @@ export function featuresToVector(features: RouteFeatures): number[] {
     features.interchangeDensity,
     features.exponentialSpacing,
     features.mergeClusterCount,
+    features.weaveCount,
     features.weaveSectionScore,
     features.trafficRatio,
     features.trafficVariance,
@@ -275,6 +290,8 @@ export function featuresToVector(features: RouteFeatures): number[] {
     features.segmentP90Difficulty,
     features.segmentMaxDifficulty,
     features.laneChangeUrgency,
+    features.turnClusterCount,
+    features.turnClusterSubscore,
     features.maneuversPer10Mi,
     features.stepsPerMile,
     features.delayRatio,

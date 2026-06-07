@@ -1,8 +1,10 @@
 import type { FactorContribution, ScoringBreakdown, SegmentHotspot } from "../types.js";
 import type { BaseScoreComponents } from "./baseScore.js";
 import type { FatigueResult } from "./fatigue.js";
-import { fatigueSubscore } from "./fatigue.js";
+import { durationBurden, fatigueSubscore } from "./fatigue.js";
 import type { RouteFeatures } from "./features.js";
+import { computeSustainedEffortFromHours } from "./sustainedEffort.js";
+import { smoothstep } from "./smoothstep.js";
 import type { RouteSegment } from "./segments.js";
 
 const FACTOR_LABELS: Record<string, string> = {
@@ -12,9 +14,19 @@ const FACTOR_LABELS: Record<string, string> = {
   traffic: "Traffic burden",
   length: "Length/monotony burden",
   fatigue: "Fatigue burden",
+  turnCluster: "Turn clustering pressure",
+  decisionDensity: "Dense decision windows",
+  sustained: "Sustained attention",
+  laneChange: "Lane change urgency",
 };
 
-const FACTOR_WEIGHTS: Record<keyof Pick<ScoringBreakdown, "speed" | "merges" | "turns" | "traffic" | "length" | "fatigue">, number> = {
+const FACTOR_WEIGHTS: Record<
+  keyof Pick<
+    ScoringBreakdown,
+    "speed" | "merges" | "turns" | "traffic" | "length" | "fatigue"
+  >,
+  number
+> = {
   speed: 0.3,
   merges: 0.25,
   turns: 0.15,
@@ -25,20 +37,23 @@ const FACTOR_WEIGHTS: Record<keyof Pick<ScoringBreakdown, "speed" | "merges" | "
 
 export function buildBreakdown(
   base: BaseScoreComponents,
-  fatigue: FatigueResult
+  fatigue: FatigueResult,
+  durationHours: number
 ): ScoringBreakdown {
   const fatigueScore = fatigueSubscore(fatigue);
+  const sustained = computeSustainedEffortFromHours(durationHours).subscore;
+  const durationScore = durationBurden(durationHours);
   return {
     speed: base.S,
     merges: base.M,
     turns: base.T,
     traffic: base.C,
-    length: base.L,
+    length: Math.max(base.L, durationScore),
     fatigue: fatigueScore,
     highway: base.S,
     maneuvers: base.T,
     navDensity: base.T,
-    effort: Math.max(base.L, fatigueScore),
+    effort: Math.max(sustained, base.L, fatigueScore, durationScore),
   };
 }
 
@@ -46,9 +61,7 @@ export function explainPrediction(
   breakdown: ScoringBreakdown,
   features: RouteFeatures
 ): FactorContribution[] {
-  const keys = Object.keys(FACTOR_WEIGHTS) as Array<
-    keyof typeof FACTOR_WEIGHTS
-  >;
+  const keys = Object.keys(FACTOR_WEIGHTS) as Array<keyof typeof FACTOR_WEIGHTS>;
 
   const entries: FactorContribution[] = keys.map((key) => {
     const value = breakdown[key] ?? 0;
@@ -63,6 +76,52 @@ export function explainPrediction(
       share: 0,
     };
   });
+
+  const sustained = computeSustainedEffortFromHours(features.durationHours).subscore;
+  if (sustained > 0.2) {
+    entries.push({
+      factor: "sustained",
+      label: FACTOR_LABELS.sustained,
+      value: sustained,
+      weight: 0.24,
+      contribution: 0.24 * sustained,
+      share: 0,
+    });
+  }
+
+  if (features.turnClusterSubscore > 0.15) {
+    entries.push({
+      factor: "turnCluster",
+      label: FACTOR_LABELS.turnCluster,
+      value: features.turnClusterSubscore,
+      weight: 0.12,
+      contribution: 0.12 * features.turnClusterSubscore,
+      share: 0,
+    });
+  }
+
+  if (features.decisionPointDensity > 1) {
+    const densityNorm = smoothstep(features.decisionPointDensity / 5);
+    entries.push({
+      factor: "decisionDensity",
+      label: FACTOR_LABELS.decisionDensity,
+      value: densityNorm,
+      weight: 0.08,
+      contribution: 0.08 * densityNorm,
+      share: 0,
+    });
+  }
+
+  if (features.laneChangeUrgency > 0.2) {
+    entries.push({
+      factor: "laneChange",
+      label: FACTOR_LABELS.laneChange,
+      value: features.laneChangeUrgency,
+      weight: 0.06,
+      contribution: 0.06 * features.laneChangeUrgency,
+      share: 0,
+    });
+  }
 
   const total = entries.reduce((sum, e) => sum + e.contribution, 0) || 1;
   for (const entry of entries) {
@@ -111,7 +170,25 @@ function summarizeSegment(segment: RouteSegment): string {
     (m) => m === "MERGE" || m.startsWith("RAMP_")
   ).length;
 
+  const turnManeuvers = segment.maneuvers.filter(
+    (m) =>
+      m.startsWith("TURN_") ||
+      m.startsWith("FORK_") ||
+      m.startsWith("ROUNDABOUT_") ||
+      m.startsWith("UTURN_")
+  );
+  const sharpTurns = turnManeuvers.filter(
+    (m) => m.includes("SHARP") || m.startsWith("UTURN_") || m.startsWith("ROUNDABOUT_")
+  ).length;
+
   if (mergeLike >= 2) return `Dense merge cluster (~${miles} mi)`;
+  if (mergeLike === 1 && segment.impliedSpeedMph >= 55) {
+    return `Lane-change section (~${miles} mi)`;
+  }
+  if (sharpTurns >= 2) return `Sharp turn cluster (~${miles} mi)`;
+  if (turnManeuvers.length >= 2 && segment.distanceMeters / 1609.34 < 0.3) {
+    return `Back-to-back turns (~${miles} mi)`;
+  }
   if (segment.maneuvers.length >= 3) return `Multiple turns (~${miles} mi)`;
   if (segment.isHighway && segment.impliedSpeedMph >= 60) {
     return `High-speed segment (~${miles} mi)`;

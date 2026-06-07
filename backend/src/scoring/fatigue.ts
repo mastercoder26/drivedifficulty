@@ -1,5 +1,6 @@
 import type { DriverContext } from "../types.js";
 import type { RouteFeatures } from "./features.js";
+import { computeSustainedEffortFromHours } from "./sustainedEffort.js";
 import { smoothstep } from "./smoothstep.js";
 
 export interface FatigueResult {
@@ -12,11 +13,17 @@ export interface FatigueResult {
 }
 
 export const FATIGUE_COEFFICIENTS = {
-  a1: 0.35,
+  a1: 0.45,
   a2: 0.25,
   a3: 0.25,
   a4: 0.15,
 } as const;
+
+/** Trip-length burden independent of road complexity (0–1). */
+export function durationBurden(hours: number): number {
+  if (hours <= 0.2) return 0;
+  return smoothstep((hours - 0.2) / 2.8);
+}
 
 function circadianPenalty(departureTime?: Date): number {
   if (!departureTime) return 0;
@@ -54,7 +61,7 @@ export function computeFatigue(
   );
 
   const D_fatigue =
-    FATIGUE_COEFFICIENTS.a1 * Math.log1p(durationMinutes / 30) +
+    FATIGUE_COEFFICIENTS.a1 * Math.log1p(durationMinutes / 20) +
     FATIGUE_COEFFICIENTS.a2 * circadian +
     FATIGUE_COEFFICIENTS.a3 * sleep +
     FATIGUE_COEFFICIENTS.a4 * continuous;
@@ -83,17 +90,25 @@ export function computeRawScore(
   fatigue: FatigueResult,
   features: RouteFeatures
 ): number {
-  const fatigueNorm = smoothstep(fatigue.D_fatigue / 2.2);
+  const fatigueNorm = smoothstep(fatigue.D_fatigue / 1.8);
   const interactionNorm = smoothstep(fatigue.D_interaction * 2);
+  const sustained = computeSustainedEffortFromHours(features.durationHours).subscore;
+  const duration = durationBurden(features.durationHours);
 
   let workload =
-    0.48 * D_route +
-    0.28 * D_base +
-    0.14 * fatigueNorm +
-    0.1 * interactionNorm;
+    0.36 * D_route +
+    0.20 * D_base +
+    0.12 * fatigueNorm +
+    0.08 * interactionNorm +
+    0.24 * sustained;
 
-  if (features.highwayShare >= 0.65 && D_route < 0.32) {
-    workload -= 0.1;
+  // Short highway hops are easier; long hauls still carry sustained-attention cost
+  if (
+    features.highwayShare >= 0.65 &&
+    D_route < 0.32 &&
+    features.durationHours < 0.75
+  ) {
+    workload -= 0.06;
   }
 
   if (features.highwayShare < 0.25 && features.maneuversPer10Mi >= 8) {
@@ -104,11 +119,31 @@ export function computeRawScore(
     workload += 0.04;
   }
 
-  if (features.mergeClusterCount >= 1) {
+  if (features.mergeClusterCount >= 2 || features.weaveCount >= 1) {
     workload += 0.06 + features.segmentP90Difficulty * 0.12;
   }
 
   workload += features.exponentialSpacing * 0.015;
+
+  if (features.turnClusterCount >= 1) {
+    workload += 0.06 + features.segmentP90Difficulty * 0.12;
+  }
+
+  if (features.closeTurnPairs >= 3) {
+    workload += 0.03 + smoothstep(features.turnSpacingPressure) * 0.04;
+  }
+
+  workload += smoothstep(features.decisionPointDensity / 5) * 0.06;
+  workload += features.laneChangeUrgency * 0.05;
+
+  if (features.monotonyScore > 0.25 && features.durationHours >= 1) {
+    workload +=
+      features.monotonyScore *
+      smoothstep((features.durationHours - 0.5) / 2.5) *
+      0.06;
+  }
+
+  workload += duration * 0.08;
 
   const trafficPoints = smoothstep(features.delayRatio / 0.35) * 2.4;
   return Math.min(10, Math.max(0, workload * 10 + trafficPoints));

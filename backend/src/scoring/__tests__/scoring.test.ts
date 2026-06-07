@@ -17,6 +17,12 @@ import {
   smoothHighwayEquivalent,
 } from "./fixtures/merge-cluster-route.js";
 import { exchangeHeavyRoute } from "./fixtures/exchange-heavy-route.js";
+import {
+  turnClusterRoute,
+  spacedTurnRoute,
+  singleMergeRoute,
+} from "./fixtures/turn-cluster-route.js";
+import { computeTurnClustering } from "../turnClustering.js";
 import { smoothstep } from "../smoothstep.js";
 import { computeHighwayShare } from "../highway.js";
 import { computeManeuverComplexity } from "../maneuvers.js";
@@ -49,11 +55,11 @@ describe("labels", () => {
 });
 
 describe("highway route scoring", () => {
-  it("scores pure highway corridor as very easy or easy (1–3.5)", () => {
+  it("scores ~85 min highway corridor as easy to moderate (2–4.5)", () => {
     const result = scoreRoute(highwayRoute);
-    expect(result.score).toBeGreaterThanOrEqual(1);
-    expect(result.score).toBeLessThanOrEqual(3.5);
-    expect(result.label).toMatch(/Very Easy|Easy/);
+    expect(result.score).toBeGreaterThanOrEqual(2);
+    expect(result.score).toBeLessThanOrEqual(4.5);
+    expect(result.label).toMatch(/Very Easy|Easy|Moderate/);
     expect(result.reasons).toContain("Mostly highway");
   });
 
@@ -64,10 +70,10 @@ describe("highway route scoring", () => {
 });
 
 describe("urban route scoring", () => {
-  it("scores urban grid as hard (6–8)", () => {
+  it("scores urban grid as hard (6–10)", () => {
     const result = scoreRoute(urbanRoute);
     expect(result.score).toBeGreaterThanOrEqual(6);
-    expect(result.score).toBeLessThanOrEqual(9);
+    expect(result.score).toBeLessThanOrEqual(10);
     expect(result.label).toMatch(/Hard|Very Hard/);
     expect(result.reasons.some((r) => r.includes("turn"))).toBe(true);
   });
@@ -146,6 +152,59 @@ describe("merge cluster aggregation", () => {
           r.toLowerCase().includes("cluster")
       )
     ).toBe(true);
+  });
+});
+
+describe("turn cluster scoring", () => {
+  it("detects close turn pairs in cluster fixture", () => {
+    const { closeTurnPairs, turnClusterCount } = computeTurnClustering(
+      turnClusterRoute.steps,
+      turnClusterRoute.distanceMeters
+    );
+    expect(closeTurnPairs).toBeGreaterThanOrEqual(3);
+    expect(turnClusterCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("scores turn cluster route higher than spaced equivalent", () => {
+    const cluster = scoreRoute(turnClusterRoute);
+    const spaced = scoreRoute(spacedTurnRoute);
+    expect(cluster.score - spaced.score).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it("includes turn clustering in reasons", () => {
+    const result = scoreRoute(turnClusterRoute);
+    expect(
+      result.reasons.some(
+        (r) =>
+          r.toLowerCase().includes("close together") ||
+          r.toLowerCase().includes("back-to-back")
+      )
+    ).toBe(true);
+  });
+});
+
+describe("merge cluster threshold", () => {
+  it("does not label single merge as clustered interchanges", () => {
+    const result = scoreRoute(singleMergeRoute);
+    expect(
+      result.reasons.some((r) => r.toLowerCase().includes("clustered interchange"))
+    ).toBe(false);
+  });
+});
+
+describe("urban route reasons", () => {
+  it("includes specific difficulty reasons beyond generic many turns", () => {
+    const result = scoreRoute(urbanRoute);
+    const specific = result.reasons.filter(
+      (r) =>
+        r.includes("close together") ||
+        r.includes("Back-to-back") ||
+        r.includes("Sharp turns") ||
+        r.includes("Urban grid") ||
+        r.includes("left turns") ||
+        r.includes("decision")
+    );
+    expect(specific.length).toBeGreaterThanOrEqual(1);
   });
 });
 

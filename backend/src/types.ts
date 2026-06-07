@@ -155,4 +155,4 @@ export interface ScoringOptions {
   continuousDriveMinutes?: number;
 }
 
-export const MODEL_VERSION = "hybrid-v1";
+export const MODEL_VERSION = "hybrid-v2";

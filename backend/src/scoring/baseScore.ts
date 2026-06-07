@@ -35,15 +35,17 @@ export function computeSpeedComponent(features: RouteFeatures): number {
 
 export function computeTurnComponent(features: RouteFeatures): number {
   const maneuverIntensity = smoothstep(features.maneuversPer10Mi / 6);
-  const turnDensity = smoothstep(features.turnDensity / 5);
+  const turnCluster = features.turnClusterSubscore;
+  const decisionDensity = smoothstep(features.decisionPointDensity / 4);
   const leftTurns = smoothstep(features.leftTurnCount / 5);
   const navDensity = smoothstep(features.stepsPerMile / 1.2);
   return Math.min(
     1,
-    maneuverIntensity * 0.45 +
-      turnDensity * 0.25 +
-      leftTurns * 0.15 +
-      navDensity * 0.15
+    maneuverIntensity * 0.35 +
+      turnCluster * 0.25 +
+      decisionDensity * 0.2 +
+      leftTurns * 0.1 +
+      navDensity * 0.1
   );
 }
 

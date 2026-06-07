@@ -178,5 +178,16 @@ export function scoreSegmentLocal(segment: RouteSegment): number {
   ).length;
   score += Math.min(0.2, sharpTurns * 0.1);
 
+  const turnCount = segment.maneuvers.filter(
+    (m) =>
+      m.startsWith("TURN_") ||
+      m.startsWith("FORK_") ||
+      m.startsWith("ROUNDABOUT_") ||
+      m.startsWith("UTURN_")
+  ).length;
+  if (turnCount >= 2 && miles < 0.3) {
+    score += Math.min(0.18, turnCount * 0.06);
+  }
+
   return Math.max(0, Math.min(1, score));
 }

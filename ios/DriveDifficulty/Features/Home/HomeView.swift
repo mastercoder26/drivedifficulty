@@ -103,6 +103,8 @@ struct HomeView: View {
             )
 
             let result = RouteAnalysisResult(
+                origin: origin,
+                destination: destination,
                 primaryRoute: response.primaryRoute,
                 alternateRoutes: response.alternateRoutes
             )
@@ -117,6 +119,8 @@ struct HomeView: View {
 }
 
 struct RouteAnalysisResult: Hashable {
+    let origin: String
+    let destination: String
     let primaryRoute: ScoredRoute
     let alternateRoutes: [ScoredRoute]
 }
