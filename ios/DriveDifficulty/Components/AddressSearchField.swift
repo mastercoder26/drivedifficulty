@@ -14,7 +14,7 @@ struct AddressSearchField: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.blue)
                     .frame(width: 20)
 
                 TextField(placeholder, text: $text)
@@ -24,37 +24,61 @@ struct AddressSearchField: View {
                     .onChange(of: text) { _, newValue in
                         completer.queryFragment = newValue
                     }
-            }
-            .padding(.vertical, 4)
 
-            if isFocused, !completer.suggestions.isEmpty {
-                Divider()
-                    .padding(.leading, 32)
-
-                ForEach(Array(completer.suggestions.prefix(4).enumerated()), id: \.offset) { _, suggestion in
+                if !text.isEmpty && isFocused {
                     Button {
-                        text = suggestion.title + (suggestion.subtitle.isEmpty ? "" : ", \(suggestion.subtitle)")
-                        completer.clear()
-                        isFocused = false
+                        text = ""
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(suggestion.title)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                            if !suggestion.subtitle.isEmpty {
-                                Text(suggestion.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                        .padding(.leading, 32)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if isFocused, !completer.suggestions.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(completer.suggestions.prefix(4).enumerated()), id: \.offset) { index, suggestion in
+                        if index > 0 {
+                            Divider().padding(.leading, 16)
+                        }
+                        Button {
+                            text = suggestion.title + (suggestion.subtitle.isEmpty ? "" : ", \(suggestion.subtitle)")
+                            completer.clear()
+                            isFocused = false
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(suggestion.title)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                if !suggestion.subtitle.isEmpty {
+                                    Text(suggestion.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .background(Color(uiColor: .tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+                )
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isFocused)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: completer.suggestions.isEmpty)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
     }
