@@ -1,4 +1,6 @@
 import type { ParsedRoute } from "../types.js";
+import type { RouteConditions } from "../enrichment/types.js";
+import { smoothstep } from "./smoothstep.js";
 import { computeHighwayShare, isHighwayStep } from "./highway.js";
 import { computeManeuverComplexity } from "./maneuvers.js";
 import { computeMergeBurden } from "./mergeBurden.js";
@@ -47,6 +49,26 @@ export interface RouteFeatures {
   maneuversPer10Mi: number;
   stepsPerMile: number;
   delayRatio: number;
+  /** 0–1 combined weather severity at drive time (rain, snow, wind, fog, ice). */
+  weatherSeverity: number;
+  precipIntensity: number;
+  snowRisk: number;
+  windSeverity: number;
+  lowVisibilityRisk: number;
+  icyRisk: number;
+  /** 0–1: how much of the route runs on small/narrow roads (higher = harder). */
+  roadSizeScore: number;
+  narrowRoadShare: number;
+  majorRoadShare: number;
+  unpavedShare: number;
+  avgLanes: number;
+  constructionZones: number;
+  /** 0–1 normalized construction burden. */
+  constructionSeverity: number;
+  /** Left turns without signal/stop protection (crossing oncoming traffic). */
+  unprotectedLeftTurns: number;
+  /** 0–1 share of left turns that are unprotected. */
+  unprotectedTurnShare: number;
 }
 
 export interface BuildFeaturesInput {
@@ -54,6 +76,7 @@ export interface BuildFeaturesInput {
   segments: RouteSegment[];
   stepSpeedsMph?: Map<number, number>;
   departureTime?: string;
+  conditions?: RouteConditions;
 }
 
 function isNightHour(date: Date): boolean {
@@ -183,8 +206,67 @@ function computeLaneChangeUrgency(segments: RouteSegment[]): number {
   return Math.min(1, urgency / Math.max(1, segments.length * 0.08));
 }
 
+interface ConditionFeatures {
+  weatherSeverity: number;
+  precipIntensity: number;
+  snowRisk: number;
+  windSeverity: number;
+  lowVisibilityRisk: number;
+  icyRisk: number;
+  roadSizeScore: number;
+  narrowRoadShare: number;
+  majorRoadShare: number;
+  unpavedShare: number;
+  avgLanes: number;
+  constructionZones: number;
+  constructionSeverity: number;
+  unprotectedLeftTurns: number;
+  unprotectedTurnShare: number;
+}
+
+function deriveConditionFeatures(
+  leftTurnCount: number,
+  conditions?: RouteConditions
+): ConditionFeatures {
+  const weather = conditions?.weather;
+  const road = conditions?.road;
+  const turns = conditions?.turns;
+
+  // Without intersection-control data, assume roughly half of left turns are
+  // unprotected (typical for mixed urban/suburban driving) so the turn model
+  // still distinguishes left-heavy routes.
+  const unprotectedLeftTurns = turns?.available
+    ? turns.unprotectedLeftTurns
+    : Math.round(leftTurnCount * 0.5);
+  const unprotectedTurnShare = turns?.available
+    ? turns.unprotectedTurnShare
+    : leftTurnCount > 0
+      ? 0.5
+      : 0;
+
+  const constructionZones = road?.constructionZones ?? 0;
+
+  return {
+    weatherSeverity: weather?.available ? weather.severity : 0,
+    precipIntensity: weather?.precipIntensity ?? 0,
+    snowRisk: weather?.snowRisk ?? 0,
+    windSeverity: weather?.windSeverity ?? 0,
+    lowVisibilityRisk: weather?.lowVisibilityRisk ?? 0,
+    icyRisk: weather?.icyRisk ?? 0,
+    roadSizeScore: road?.available ? road.roadSizeScore : 0,
+    narrowRoadShare: road?.narrowRoadShare ?? 0,
+    majorRoadShare: road?.majorRoadShare ?? 0,
+    unpavedShare: road?.unpavedShare ?? 0,
+    avgLanes: road?.avgLanes ?? 0,
+    constructionZones,
+    constructionSeverity: smoothstep(constructionZones / 4),
+    unprotectedLeftTurns,
+    unprotectedTurnShare,
+  };
+}
+
 export function buildFeatures(input: BuildFeaturesInput): RouteFeatures {
-  const { route, segments, stepSpeedsMph, departureTime } = input;
+  const { route, segments, stepSpeedsMph, departureTime, conditions } = input;
   const speedStats = computeSpeedStats(route, stepSpeedsMph);
   const { highwayShare } = computeHighwayShare(route.steps, stepSpeedsMph);
   const maneuvers = computeManeuverComplexity(route.steps, route.distanceMeters);
@@ -258,6 +340,7 @@ export function buildFeatures(input: BuildFeaturesInput): RouteFeatures {
     maneuversPer10Mi: maneuvers.maneuversPer10Mi,
     stepsPerMile,
     delayRatio,
+    ...deriveConditionFeatures(leftTurnCount, conditions),
   };
 }
 
@@ -295,6 +378,19 @@ export function featuresToVector(features: RouteFeatures): number[] {
     features.maneuversPer10Mi,
     features.stepsPerMile,
     features.delayRatio,
+    features.weatherSeverity,
+    features.precipIntensity,
+    features.snowRisk,
+    features.windSeverity,
+    features.lowVisibilityRisk,
+    features.icyRisk,
+    features.roadSizeScore,
+    features.narrowRoadShare,
+    features.majorRoadShare,
+    features.unpavedShare,
+    features.constructionSeverity,
+    features.unprotectedLeftTurns,
+    features.unprotectedTurnShare,
   ];
 }
 
@@ -303,6 +399,7 @@ export function buildFeaturesFromRoute(
   options: {
     stepSpeedsMph?: Map<number, number>;
     departureTime?: string;
+    conditions?: RouteConditions;
   } = {}
 ): { segments: RouteSegment[]; features: RouteFeatures } {
   const segments = segmentRoute(route, options.stepSpeedsMph);
@@ -311,6 +408,7 @@ export function buildFeaturesFromRoute(
     segments,
     stepSpeedsMph: options.stepSpeedsMph,
     departureTime: options.departureTime,
+    conditions: options.conditions,
   });
   return { segments, features };
 }

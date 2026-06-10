@@ -1,3 +1,5 @@
+import type { RouteConditions } from "./enrichment/types.js";
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -24,6 +26,8 @@ export interface ParsedRoute {
   bounds: Bounds;
   steps: RouteStep[];
   routeLabels?: string[];
+  /** Advisory warnings from the routing provider (tolls, construction, etc). */
+  warnings?: string[];
 }
 
 export interface SpeedLimitPoint {
@@ -39,6 +43,8 @@ export interface ScoringBreakdown {
   traffic: number;
   length: number;
   fatigue: number;
+  weather: number;
+  road: number;
   /** Legacy aliases for backward compatibility */
   highway: number;
   maneuvers: number;
@@ -78,6 +84,8 @@ export interface ScoredRoute {
   contributions: FactorContribution[];
   uncertainty: ScoreUncertainty;
   hotspots: SegmentHotspot[];
+  /** Live conditions (weather, road metadata, construction) used for scoring. */
+  conditions?: RouteConditions;
   predictionId?: string;
   modelVersion?: string;
   requestFeedback?: boolean;
@@ -153,6 +161,7 @@ export interface ScoringOptions {
   departureTime?: string;
   hoursSlept?: number;
   continuousDriveMinutes?: number;
+  conditions?: RouteConditions;
 }
 
-export const MODEL_VERSION = "hybrid-v2";
+export const MODEL_VERSION = "hybrid-v3";

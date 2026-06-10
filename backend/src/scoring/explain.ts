@@ -14,16 +14,26 @@ const FACTOR_LABELS: Record<string, string> = {
   traffic: "Traffic burden",
   length: "Length/monotony burden",
   fatigue: "Fatigue burden",
+  weather: "Weather conditions",
+  road: "Road size/conditions",
   turnCluster: "Turn clustering pressure",
   decisionDensity: "Dense decision windows",
   sustained: "Sustained attention",
   laneChange: "Lane change urgency",
+  unprotectedLefts: "Unprotected left turns",
 };
 
 const FACTOR_WEIGHTS: Record<
   keyof Pick<
     ScoringBreakdown,
-    "speed" | "merges" | "turns" | "traffic" | "length" | "fatigue"
+    | "speed"
+    | "merges"
+    | "turns"
+    | "traffic"
+    | "length"
+    | "fatigue"
+    | "weather"
+    | "road"
   >,
   number
 > = {
@@ -31,8 +41,10 @@ const FACTOR_WEIGHTS: Record<
   merges: 0.25,
   turns: 0.15,
   traffic: 0.15,
-  length: 0.15,
+  length: 0.2,
   fatigue: 0.1,
+  weather: 0.18,
+  road: 0.1,
 };
 
 export function buildBreakdown(
@@ -50,6 +62,8 @@ export function buildBreakdown(
     traffic: base.C,
     length: Math.max(base.L, durationScore),
     fatigue: fatigueScore,
+    weather: base.W,
+    road: base.R,
     highway: base.S,
     maneuvers: base.T,
     navDensity: base.T,
@@ -63,19 +77,37 @@ export function explainPrediction(
 ): FactorContribution[] {
   const keys = Object.keys(FACTOR_WEIGHTS) as Array<keyof typeof FACTOR_WEIGHTS>;
 
-  const entries: FactorContribution[] = keys.map((key) => {
-    const value = breakdown[key] ?? 0;
-    const weight = FACTOR_WEIGHTS[key];
-    const contribution = weight * value;
-    return {
-      factor: key,
-      label: FACTOR_LABELS[key] ?? key,
-      value,
-      weight,
-      contribution,
+  const entries: FactorContribution[] = keys
+    .filter((key) => {
+      // Hide condition factors entirely when no live data contributed.
+      if (key === "weather" || key === "road") return (breakdown[key] ?? 0) > 0.02;
+      return true;
+    })
+    .map((key) => {
+      const value = breakdown[key] ?? 0;
+      const weight = FACTOR_WEIGHTS[key];
+      const contribution = weight * value;
+      return {
+        factor: key,
+        label: FACTOR_LABELS[key] ?? key,
+        value,
+        weight,
+        contribution,
+        share: 0,
+      };
+    });
+
+  if (features.unprotectedLeftTurns >= 1) {
+    const norm = smoothstep(features.unprotectedLeftTurns / 5);
+    entries.push({
+      factor: "unprotectedLefts",
+      label: FACTOR_LABELS.unprotectedLefts,
+      value: norm,
+      weight: 0.1,
+      contribution: 0.1 * norm,
       share: 0,
-    };
-  });
+    });
+  }
 
   const sustained = computeSustainedEffortFromHours(features.durationHours).subscore;
   if (sustained > 0.2) {

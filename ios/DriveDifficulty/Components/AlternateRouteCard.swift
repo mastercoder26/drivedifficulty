@@ -81,12 +81,13 @@ struct AlternateRouteCard: View {
             reasons: ["Many turns"],
             breakdown: DifficultyBreakdown(
                 speed: 0.3, merges: 0.2, turns: 0.6, traffic: 0.2,
-                length: 0.3, fatigue: 0.1,
+                length: 0.3, fatigue: 0.1, weather: nil, road: nil,
                 highway: 0.3, maneuvers: 0.6, navDensity: 0.4, effort: 0.3
             ),
             contributions: nil,
             uncertainty: ScoreUncertainty(low: 4.5, high: 5.7, confidence: 0.7, spread: 1.2),
             hotspots: nil,
+            conditions: nil,
             predictionId: nil,
             modelVersion: nil,
             requestFeedback: nil,

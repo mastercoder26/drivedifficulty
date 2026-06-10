@@ -73,12 +73,49 @@ export function generateReasons(
     reasons.push({ text: "Frequent lane changes", weight: 0.18 });
   }
 
-  if (features.leftTurnCount >= 4) {
+  if (features.unprotectedLeftTurns >= 2) {
+    reasons.push({
+      text: "Unprotected left turns",
+      weight: 0.26 + features.unprotectedTurnShare * 0.1,
+    });
+  } else if (features.leftTurnCount >= 4) {
     reasons.push({ text: "Multiple left turns", weight: 0.17 });
   }
 
   if (features.sharpTurnCount >= 2) {
     reasons.push({ text: "Sharp turns or U-turns", weight: 0.2 });
+  }
+
+  if (features.snowRisk >= 0.25 || features.icyRisk >= 0.5) {
+    reasons.push({ text: "Snow or ice expected", weight: 0.3 });
+  } else if (features.precipIntensity >= 0.25) {
+    reasons.push({ text: "Rain at drive time", weight: 0.24 });
+  }
+
+  if (features.windSeverity >= 0.4) {
+    reasons.push({ text: "Strong wind gusts", weight: 0.2 });
+  }
+
+  if (features.lowVisibilityRisk >= 0.4) {
+    reasons.push({ text: "Low visibility expected", weight: 0.22 });
+  }
+
+  if (features.constructionZones >= 1) {
+    reasons.push({
+      text:
+        features.constructionZones >= 3
+          ? "Multiple construction zones"
+          : "Construction along the route",
+      weight: 0.21,
+    });
+  }
+
+  if (features.unpavedShare >= 0.1) {
+    reasons.push({ text: "Unpaved road sections", weight: 0.2 });
+  }
+
+  if (features.roadSizeScore >= 0.55 && features.narrowRoadShare >= 0.3) {
+    reasons.push({ text: "Narrow local roads", weight: 0.18 });
   }
 
   const sustained = computeSustainedEffortFromHours(features.durationHours).subscore;

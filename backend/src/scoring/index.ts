@@ -38,6 +38,7 @@ export function scoreRoute(
   const { segments, features } = buildFeaturesFromRoute(route, {
     stepSpeedsMph: options.stepSpeedsMph,
     departureTime: options.departureTime,
+    conditions: options.conditions,
   });
 
   const segmentScores = segments.map(scoreSegmentLocal);
@@ -97,6 +98,7 @@ export function scoreRoute(
     contributions,
     uncertainty,
     hotspots,
+    conditions: options.conditions,
     predictionId: options.predictionId,
     modelVersion: MODEL_VERSION,
     requestFeedback: feedbackCheck.shouldRequestFeedback,

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "stablebridge": {
+      "source": "mastercoder26/stablebridge",
+      "sourceType": "github",
+      "skillPath": "apps/web/public/SKILL.md",
+      "computedHash": "b70f2ba69e934db3837cde561ae55e97906e788e41f05a7cff991719f103a357"
+    },
+    "stablebridge-generate": {
+      "source": "mastercoder26/stablebridge",
+      "sourceType": "github",
+      "skillPath": "skill/stablebridge-generate/SKILL.md",
+      "computedHash": "66f4589861ab1877e61f9a7c98f5223b6eea5d5c6872f630fc5b3d187916dd50"
+    },
+    "stablebridge-insert": {
+      "source": "mastercoder26/stablebridge",
+      "sourceType": "github",
+      "skillPath": "skill/stablebridge-insert/SKILL.md",
+      "computedHash": "e500e82bccf1efd8b0e8fc10472843ff96da15e5a21b15a6ec42ebee76eddb33"
+    },
+    "stablebridge-setup": {
+      "source": "mastercoder26/stablebridge",
+      "sourceType": "github",
+      "skillPath": "skill/stablebridge-setup/SKILL.md",
+      "computedHash": "0e4f3cd92be33c1538ace7b56f38fa20f4c714225f943ca1e8e3e64d50becf36"
+    }
+  }
+}

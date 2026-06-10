@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { computeRoutes } from "../../src/google/routes.js";
 import { enrichRouteWithSpeedLimits } from "../../src/google/roads.js";
+import { enrichRoute, neutralConditions } from "../../src/enrichment/index.js";
 import { scoreRoutes } from "../../src/scoring/index.js";
 import { buildFeaturesFromRoute } from "../../src/scoring/features.js";
 import {
@@ -108,15 +109,27 @@ export default async function handler(
       apiKey,
     });
 
-    const optionsList = await Promise.all(
-      routes.map((route) => enrichRouteWithSpeedLimits(route, apiKey))
-    );
+    // Cap live-condition lookups (weather + OSM) to keep latency bounded
+    // when many alternates are returned.
+    const MAX_ENRICHED_ROUTES = 3;
+
+    const [optionsList, conditionsList] = await Promise.all([
+      Promise.all(routes.map((route) => enrichRouteWithSpeedLimits(route, apiKey))),
+      Promise.all(
+        routes.map((route, i) =>
+          i < MAX_ENRICHED_ROUTES
+            ? enrichRoute(route, { departureTime: request.departureTime })
+            : Promise.resolve(neutralConditions())
+        )
+      ),
+    ]);
 
     const scoreOptions = routes.map((_route, i) => ({
       stepSpeedsMph: optionsList[i],
       departureTime: request.departureTime,
       hoursSlept: request.hoursSlept,
       continuousDriveMinutes: request.continuousDriveMinutes,
+      conditions: conditionsList[i],
     }));
 
     const { primary, alternates } = scoreRoutes(routes, scoreOptions);
@@ -125,6 +138,7 @@ export default async function handler(
       const { features } = buildFeaturesFromRoute(routes[0]!, {
         stepSpeedsMph: optionsList[0],
         departureTime: request.departureTime,
+        conditions: conditionsList[0],
       });
 
       const predictionId = await logPrediction({

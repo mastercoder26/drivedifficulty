@@ -7,7 +7,6 @@ struct ResultsView: View {
     @State private var selectedRoute: ScoredRoute
     @State private var showFeedbackSheet = false
     @State private var feedbackRating: Double = 5
-    @State private var choseAlternate = false
     @State private var feedbackSubmitted = false
 
     init(result: RouteAnalysisResult) {
@@ -31,6 +30,9 @@ struct ResultsView: View {
                 scoreSection
                 mapSection
                 tripDetailsSection
+                if let conditions = selectedRoute.conditions, !conditions.sources.isEmpty {
+                    conditionsSection(conditions)
+                }
                 navigationSection
                 if let hotspots = selectedRoute.hotspots, !hotspots.isEmpty {
                     hotspotsSection(hotspots)
@@ -188,6 +190,139 @@ struct ResultsView: View {
         openURL(url)
     }
 
+    @ViewBuilder
+    private func conditionsSection(_ conditions: RouteConditions) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Live Conditions")
+                .font(.headline)
+
+            if conditions.weather.available {
+                HStack(spacing: 12) {
+                    Image(systemName: conditions.weather.systemImage)
+                        .font(.title2)
+                        .symbolRenderingMode(.multicolor)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text(conditions.weather.condition)
+                                .font(.subheadline.weight(.semibold))
+                            severityChip(
+                                label: conditions.weather.severityLabel,
+                                severity: conditions.weather.severity
+                            )
+                        }
+                        Text(weatherDetailText(conditions.weather))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+
+            if conditions.road.available {
+                Divider()
+                HStack(spacing: 12) {
+                    Image(systemName: "road.lanes")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(conditions.road.dominantRoadLabel)
+                            .font(.subheadline.weight(.semibold))
+                        Text(roadDetailText(conditions.road))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+
+            if conditions.road.constructionZones > 0 {
+                conditionRow(
+                    systemImage: "cone.fill",
+                    color: .orange,
+                    text: conditions.road.constructionZones == 1
+                        ? "1 construction zone along the route"
+                        : "\(conditions.road.constructionZones) construction zones along the route"
+                )
+            }
+
+            if conditions.turns.available && conditions.turns.unprotectedLeftTurns > 0 {
+                conditionRow(
+                    systemImage: "arrow.turn.up.left",
+                    color: .red,
+                    text: conditions.turns.unprotectedLeftTurns == 1
+                        ? "1 unprotected left turn (no signal)"
+                        : "\(conditions.turns.unprotectedLeftTurns) unprotected left turns (no signal)"
+                )
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func conditionRow(systemImage: String, color: Color, text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.subheadline)
+                .foregroundStyle(color)
+                .frame(width: 24)
+            Text(text)
+                .font(.subheadline)
+            Spacer()
+        }
+    }
+
+    private func severityChip(label: String, severity: Double) -> some View {
+        let color: Color = severity < 0.15 ? .green : severity < 0.4 ? .yellow : severity < 0.7 ? .orange : .red
+        return Text(label)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.18))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    private func weatherDetailText(_ weather: WeatherConditions) -> String {
+        var parts: [String] = [String(format: "%.0f°F", weather.temperatureF)]
+        if weather.windGustMph >= 15 {
+            parts.append(String(format: "gusts %.0f mph", weather.windGustMph))
+        }
+        if weather.visibilityMiles > 0 && weather.visibilityMiles < 5 {
+            parts.append(String(format: "visibility %.1f mi", weather.visibilityMiles))
+        }
+        if weather.icyRisk > 0.3 {
+            parts.append("ice risk")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func roadDetailText(_ road: RoadConditions) -> String {
+        var parts: [String] = []
+        if road.avgLanes > 0 {
+            parts.append(String(format: "avg %.1f lanes", road.avgLanes))
+        }
+        if road.majorRoadShare > 0 {
+            parts.append(String(format: "%.0f%% major roads", road.majorRoadShare * 100))
+        }
+        if road.narrowRoadShare >= 0.15 {
+            parts.append(String(format: "%.0f%% narrow", road.narrowRoadShare * 100))
+        }
+        if road.unpavedShare >= 0.05 {
+            parts.append(String(format: "%.0f%% unpaved", road.unpavedShare * 100))
+        }
+        return parts.isEmpty ? "Road data from OpenStreetMap" : parts.joined(separator: " · ")
+    }
+
     private func hotspotsSection(_ hotspots: [SegmentHotspot]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Difficulty Hotspots")
@@ -304,9 +439,6 @@ struct ResultsView: View {
                         .monospacedDigit()
                 }
 
-                Section {
-                    Toggle("I chose a different route", isOn: $choseAlternate)
-                }
             }
             .navigationTitle("Feedback")
             .navigationBarTitleDisplayMode(.inline)
@@ -348,8 +480,7 @@ struct ResultsView: View {
         do {
             try await APIClient().submitFeedback(
                 predictionId: predictionId,
-                userRating: feedbackRating,
-                alternateSelected: choseAlternate
+                userRating: feedbackRating
             )
             feedbackSubmitted = true
             showFeedbackSheet = false
@@ -433,7 +564,7 @@ struct BreakdownBarRow: View {
                     reasons: ["Mostly highway", "Light traffic"],
                     breakdown: DifficultyBreakdown(
                         speed: 0.30, merges: 0.15, turns: 0.35, traffic: 0.15,
-                        length: 0.45, fatigue: 0.20,
+                        length: 0.45, fatigue: 0.20, weather: 0.35, road: 0.15,
                         highway: 0.30, maneuvers: 0.35, navDensity: 0.20, effort: 0.45
                     ),
                     contributions: [
@@ -456,6 +587,24 @@ struct BreakdownBarRow: View {
                     ],
                     uncertainty: ScoreUncertainty(low: 3.6, high: 4.8, confidence: 0.75, spread: 1.2),
                     hotspots: [],
+                    conditions: RouteConditions(
+                        weather: WeatherConditions(
+                            available: true, condition: "Rain", severity: 0.45,
+                            precipIntensity: 0.5, snowRisk: 0, windSeverity: 0.2,
+                            lowVisibilityRisk: 0.1, icyRisk: 0, temperatureF: 54,
+                            windGustMph: 22, visibilityMiles: 4.5
+                        ),
+                        road: RoadConditions(
+                            available: true, avgLanes: 2.6, narrowRoadShare: 0.1,
+                            majorRoadShare: 0.8, unpavedShare: 0, roadSizeScore: 0.2,
+                            constructionZones: 1, dominantRoadClass: "motorway"
+                        ),
+                        turns: TurnExposure(
+                            available: true, unprotectedLeftTurns: 2,
+                            protectedLeftTurns: 3, unprotectedTurnShare: 0.4
+                        ),
+                        sources: ["open-meteo", "osm-overpass"]
+                    ),
                     predictionId: nil,
                     modelVersion: "hybrid-v1",
                     requestFeedback: false,

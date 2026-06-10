@@ -1,0 +1,8 @@
+{
+  "assetsDir": "assets/generated",
+  "defaultModel": "core",
+  "defaultFormat": "webp",
+  "defaultAspectRatio": "auto",
+  "creditBudgetFloor": 0,
+  "autonomyMode": "plan-then-execute"
+}

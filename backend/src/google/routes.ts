@@ -9,6 +9,7 @@ const FIELD_MASK = [
   "routes.distanceMeters",
   "routes.polyline.encodedPolyline",
   "routes.routeLabels",
+  "routes.warnings",
   "routes.legs.steps.distanceMeters",
   "routes.legs.steps.staticDuration",
   "routes.legs.steps.navigationInstruction",
@@ -56,6 +57,7 @@ interface GoogleRoute {
   distanceMeters?: number;
   polyline?: { encodedPolyline?: string };
   routeLabels?: string[];
+  warnings?: string[];
   legs?: GoogleLeg[];
   viewport?: GoogleViewport;
 }
@@ -109,6 +111,7 @@ function parseRoute(route: GoogleRoute): ParsedRoute {
     bounds: parseBounds(route.viewport),
     steps: parseSteps(route.legs),
     routeLabels: route.routeLabels,
+    warnings: route.warnings,
   };
 }
 

@@ -16,7 +16,6 @@ struct FeedbackRequest: Encodable {
     let predictionId: String
     let userRating: Double?
     let routeRejected: Bool?
-    let alternateSelected: Bool?
 }
 
 // MARK: - Response
@@ -37,6 +36,7 @@ struct ScoredRoute: Decodable, Identifiable, Hashable {
     let contributions: [FactorContribution]?
     let uncertainty: ScoreUncertainty?
     let hotspots: [SegmentHotspot]?
+    let conditions: RouteConditions?
     let predictionId: String?
     let modelVersion: String?
     let requestFeedback: Bool?
@@ -94,6 +94,8 @@ struct DifficultyBreakdown: Decodable {
     let traffic: Double
     let length: Double?
     let fatigue: Double?
+    let weather: Double?
+    let road: Double?
     let highway: Double
     let maneuvers: Double
     let navDensity: Double
@@ -101,7 +103,7 @@ struct DifficultyBreakdown: Decodable {
 
     var items: [(key: String, title: String, value: Double)] {
         if speed != nil {
-            return [
+            var rows: [(key: String, title: String, value: Double)] = [
                 ("speed", "Speed", speed ?? highway),
                 ("merges", "Merges", merges ?? 0),
                 ("turns", "Turns", turns ?? maneuvers),
@@ -109,6 +111,13 @@ struct DifficultyBreakdown: Decodable {
                 ("length", "Length", length ?? effort),
                 ("fatigue", "Fatigue", fatigue ?? 0)
             ]
+            if let weather, weather > 0.02 {
+                rows.append(("weather", "Weather", weather))
+            }
+            if let road, road > 0.02 {
+                rows.append(("road", "Road Conditions", road))
+            }
+            return rows
         }
         return [
             ("highway", "Road Type", highway),
@@ -118,6 +127,85 @@ struct DifficultyBreakdown: Decodable {
             ("effort", "Drive Length", effort)
         ]
     }
+}
+
+// MARK: - Live Conditions
+
+struct RouteConditions: Decodable {
+    let weather: WeatherConditions
+    let road: RoadConditions
+    let turns: TurnExposure
+    let sources: [String]
+}
+
+struct WeatherConditions: Decodable {
+    let available: Bool
+    let condition: String
+    let severity: Double
+    let precipIntensity: Double
+    let snowRisk: Double
+    let windSeverity: Double
+    let lowVisibilityRisk: Double
+    let icyRisk: Double
+    let temperatureF: Double
+    let windGustMph: Double
+    let visibilityMiles: Double
+
+    var systemImage: String {
+        switch condition.lowercased() {
+        case "clear": return "sun.max.fill"
+        case "partly cloudy": return "cloud.sun.fill"
+        case "overcast": return "cloud.fill"
+        case "fog": return "cloud.fog.fill"
+        case "drizzle": return "cloud.drizzle.fill"
+        case "rain": return "cloud.rain.fill"
+        case "freezing rain": return "cloud.sleet.fill"
+        case "snow": return "cloud.snow.fill"
+        case "thunderstorm": return "cloud.bolt.rain.fill"
+        default: return "cloud.fill"
+        }
+    }
+
+    var severityLabel: String {
+        switch severity {
+        case ..<0.15: return "Good"
+        case ..<0.4: return "Fair"
+        case ..<0.7: return "Poor"
+        default: return "Severe"
+        }
+    }
+}
+
+struct RoadConditions: Decodable {
+    let available: Bool
+    let avgLanes: Double
+    let narrowRoadShare: Double
+    let majorRoadShare: Double
+    let unpavedShare: Double
+    let roadSizeScore: Double
+    let constructionZones: Int
+    let dominantRoadClass: String
+
+    var dominantRoadLabel: String {
+        switch dominantRoadClass {
+        case "motorway", "motorway_link": return "Interstate / freeway"
+        case "trunk", "trunk_link": return "Major highway"
+        case "primary", "primary_link": return "Primary road"
+        case "secondary", "secondary_link": return "Secondary road"
+        case "tertiary", "tertiary_link": return "Local connector"
+        case "residential": return "Residential streets"
+        case "living_street", "service": return "Small access roads"
+        case "track": return "Unpaved track"
+        default: return "Mixed roads"
+        }
+    }
+}
+
+struct TurnExposure: Decodable {
+    let available: Bool
+    let unprotectedLeftTurns: Int
+    let protectedLeftTurns: Int
+    let unprotectedTurnShare: Double
 }
 
 struct RouteBounds: Decodable {

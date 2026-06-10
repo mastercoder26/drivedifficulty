@@ -104,8 +104,7 @@ struct APIClient {
     func submitFeedback(
         predictionId: String,
         userRating: Double?,
-        routeRejected: Bool = false,
-        alternateSelected: Bool = false
+        routeRejected: Bool = false
     ) async throws {
         let endpoint = baseURL.appendingPathComponent("api/route/feedback")
         var request = URLRequest(url: endpoint)
@@ -115,8 +114,7 @@ struct APIClient {
         let body = FeedbackRequest(
             predictionId: predictionId,
             userRating: userRating,
-            routeRejected: routeRejected,
-            alternateSelected: alternateSelected
+            routeRejected: routeRejected
         )
         request.httpBody = try JSONEncoder().encode(body)
 

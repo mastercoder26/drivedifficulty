@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "stablebridge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@astablebridge/cli",
+        "--mcp"
+      ]
+    }
+  }
+}

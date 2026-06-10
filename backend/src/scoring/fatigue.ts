@@ -19,10 +19,25 @@ export const FATIGUE_COEFFICIENTS = {
   a4: 0.15,
 } as const;
 
-/** Trip-length burden independent of road complexity (0–1). */
+/**
+ * Trip-length burden independent of road complexity (0–1).
+ * Grows quickly through the first ~3 hours and keeps climbing (instead of
+ * saturating) so very long hauls remain clearly harder than medium trips.
+ */
 export function durationBurden(hours: number): number {
   if (hours <= 0.2) return 0;
-  return smoothstep((hours - 0.2) / 2.8);
+  return Math.min(
+    1,
+    smoothstep((hours - 0.2) / 3.3) * 0.8 + smoothstep((hours - 3.5) / 6) * 0.2
+  );
+}
+
+/**
+ * Direct score points (0–10 scale) contributed by trip duration alone.
+ * A short hop adds ~0, a 2h trip ~1.3, a 4h trip ~3, an 8h haul ~4.3.
+ */
+export function durationPoints(hours: number): number {
+  return 3.2 * smoothstep(hours / 4.5) + 1.2 * smoothstep((hours - 4) / 6);
 }
 
 function circadianPenalty(departureTime?: Date): number {
@@ -73,6 +88,9 @@ export function computeFatigue(
   D_interaction += tiredFactor * features.nighttimeShare * 0.3;
   D_interaction +=
     tiredFactor * features.mergeBurdenSubscore * features.weaveSectionScore * 0.4;
+  // Bad weather is disproportionately harder when tired or at night.
+  D_interaction += tiredFactor * features.weatherSeverity * 0.35;
+  D_interaction += features.nighttimeShare * features.weatherSeverity * 0.25;
 
   return {
     durationMinutes,
@@ -93,14 +111,13 @@ export function computeRawScore(
   const fatigueNorm = smoothstep(fatigue.D_fatigue / 1.8);
   const interactionNorm = smoothstep(fatigue.D_interaction * 2);
   const sustained = computeSustainedEffortFromHours(features.durationHours).subscore;
-  const duration = durationBurden(features.durationHours);
 
   let workload =
-    0.36 * D_route +
-    0.20 * D_base +
+    0.38 * D_route +
+    0.22 * D_base +
     0.12 * fatigueNorm +
     0.08 * interactionNorm +
-    0.24 * sustained;
+    0.12 * sustained;
 
   // Short highway hops are easier; long hauls still carry sustained-attention cost
   if (
@@ -143,10 +160,36 @@ export function computeRawScore(
       0.06;
   }
 
-  workload += duration * 0.08;
+  let points = workload * 10;
+
+  // Trip length is a first-class driver of difficulty: long hauls cost real
+  // points even on easy roads.
+  points += durationPoints(features.durationHours);
+
+  // Unprotected left turns are the single hardest routine maneuver.
+  points += smoothstep(features.unprotectedLeftTurns / 5) * 0.7;
+  points += features.unprotectedTurnShare * 0.2;
+
+  // Live conditions: weather at drive time, amplified by high-speed exposure
+  // and nighttime driving.
+  if (features.weatherSeverity > 0.05) {
+    const highSpeedExposure =
+      features.fractionAbove45Mph * 0.5 + features.fractionAbove60Mph * 0.5;
+    const weatherPoints =
+      features.weatherSeverity *
+      (1.5 + 0.7 * highSpeedExposure + 0.5 * features.nighttimeShare);
+    points += Math.min(2.6, weatherPoints);
+    // Ice and snow add risk beyond plain rain.
+    points += features.icyRisk * 0.5 + features.snowRisk * 0.4;
+  }
+
+  // Road context: narrow/unpaved roads and active construction zones.
+  points += features.roadSizeScore * smoothstep(features.urbanShare) * 0.5;
+  points += smoothstep(features.unpavedShare / 0.3) * 0.4;
+  points += features.constructionSeverity * 0.8;
 
   const trafficPoints = smoothstep(features.delayRatio / 0.35) * 2.4;
-  return Math.min(10, Math.max(0, workload * 10 + trafficPoints));
+  return Math.min(10, Math.max(0, points + trafficPoints));
 }
 
 export function fatigueSubscore(fatigue: FatigueResult): number {
